@@ -1,0 +1,8 @@
+# C3 аудита: база пользователей не должна попадать в git
+*.db
+*.sqlite3
+backend/mediator.db
+venv/
+__pycache__/
+*.pyc
+.env

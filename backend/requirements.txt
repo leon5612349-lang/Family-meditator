@@ -1,0 +1,6 @@
+aiogram>=3.13,<4.0
+aiosqlite>=0.20
+fastapi>=0.115
+uvicorn[standard]>=0.30
+openai>=1.40
+python-dotenv>=1.0

@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Наш уголок — семейный медиатор</title>
+
+    <!-- Официальная библиотека Telegram -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- Ламповые шрифты: Comfortaa (заголовки) + Nunito (текст) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        /* ══════════════════════════════════════════════════════════
+           ПАЛИТРА «Ламповый терапевтический дневник»
+           Светлая тема — тёплый кремовый блокнот,
+           тёмная — тёплый графит (включается темой Telegram).
+           ══════════════════════════════════════════════════════════ */
+
+        :root {
+            /* Светлая тема: кремовая бумага */
+            --bg: #FDFBF7;                /* фон страницы (кремовый) */
+            --bg-chat: #F6F0E6;           /* страница блокнота — чуть темнее */
+            --surface: #FFFFFF;           /* карточки, поле ввода, пузыри */
+            --surface-alt: #FBF6EE;       /* входящие «листочки» партнёра */
+            --text: #3A3330;              /* тёплый графит текста */
+            --text-muted: #8B7F76;        /* подписи, hint */
+            --accent: #D98A72;            /* приглушённая терракота */
+            --accent-deep: #C87256;       /* терракота поглубже (контуры) */
+            --accent-text: #FFFFFF;
+            --accent-soft: rgba(217, 138, 114, 0.14);
+            --sage: #9CAF88;               /* шалфей (границы, hover) */
+            --sage-soft: #E7EDDF;          /* светло-шалфейный фон кнопки */
+            --sage-deep: #5E6B4E;          /* тёмно-зелёный текст/иконка */
+            --sage-text-on: #FFFFFF;       /* текст поверх сплошного шалфея */
+            --dot: rgba(58, 51, 48, 0.055);  /* точки фонового паттерна */
+            --line: rgba(58, 51, 48, 0.08);  /* тонкие линии-разделители */
+
+            --radius: 24px;               /* крупное скругление форм/пузырей */
+            --radius-sm: 14px;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.04);   /* листочек бумаги */
+            --shadow-deep: 0 6px 18px rgba(217, 138, 114, 0.22);
+            --font-title: "Comfortaa", "Nunito", system-ui, sans-serif;
+            --font-body: "Nunito", -apple-system, "Segoe UI", sans-serif;
+        }
+
+        /* Тёмная тема: тёплый графит (переключается Telegram colorScheme) */
+        [data-theme="dark"] {
+            --bg: #2A2725;
+            --bg-chat: #2A2725;
+            --surface: #38322E;
+            --surface-alt: #38322E;
+            --text: #EFE7DF;
+            --text-muted: #A6988C;
+            --accent: #D98A72;
+            --accent-deep: #E19A83;
+            --accent-text: #2E2A27;
+            --accent-soft: rgba(217, 138, 114, 0.16);
+            --sage: #9CAF88;
+            --sage-soft: #4A5240;          /* приглушённый шалфей на графите */
+            --sage-deep: #C6D2B8;          /* светлый текст-шалфей в тёмной теме */
+            --sage-text-on: #2E2A27;
+            --dot: rgba(239, 231, 223, 0.05);
+            --line: rgba(239, 231, 223, 0.09);
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+            --shadow-deep: 0 6px 18px rgba(0, 0, 0, 0.30);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body { height: 100%; }
+
+        body {
+            font-family: var(--font-body);
+            color: var(--text);
+            background-color: var(--bg);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+        }
+
+        /* ── Шапка «Наш уголок» ────────────────────────────────── */
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 18px;
+            padding-top: calc(14px + var(--tg-safe-area-inset-top, 0px));
+            background-color: var(--bg);
+            border-bottom: none;
+            flex-shrink: 0;
+        }
+
+        .header-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 18px;
+            background: var(--accent-soft);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .header-title {
+            font-family: var(--font-title);
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            color: var(--text);
+        }
+
+        .header-sub {
+            font-family: var(--font-title);
+            font-size: 11.5px;
+            font-weight: 500;
+            letter-spacing: 0.8px;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+
+        /* ── Окно сообщений — страница дневника ───────────────── */
+
+        .chat {
+            position: relative;   /* якорь для абсолютного экрана приветствия */
+            flex: 1;
+            overflow-y: auto;
+            padding: 14px 14px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            scroll-behavior: smooth;
+            background-color: var(--bg-chat);
+            /* Тонкий точечный паттерн — как бумага в клетку на просвет */
+            background-image: radial-gradient(var(--dot) 1.1px, transparent 1.1px);
+            background-size: 20px 20px;
+            border-top: 1px solid var(--line);
+        }
+
+        /* Мягкий скроллбар */
+        .chat::-webkit-scrollbar { width: 4px; }
+        .chat::-webkit-scrollbar-thumb {
+            background: var(--line);
+            border-radius: 4px;
+        }
+
+        .system-message {
+            align-self: center;
+            max-width: 86%;
+            text-align: center;
+            font-size: 12.5px;
+            line-height: 1.55;
+            color: var(--text-muted);
+            background: transparent;
+            border: 1px dashed var(--line);
+            border-radius: var(--radius-sm);
+            padding: 8px 14px;
+            margin: 4px 0;
+        }
+
+        /* ── Пузыри-листочки ──────────────────────────────────── */
+
+        .bubble {
+            max-width: 84%;
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            font-size: 15px;
+            line-height: 1.55;
+            word-wrap: break-word;
+            box-shadow: var(--shadow);
+            animation: appear 0.28s ease-out;
+        }
+
+        @keyframes appear {
+            from { opacity: 0; transform: translateY(8px) scale(0.985); }
+            to   { opacity: 1; transform: translateY(0)   scale(1); }
+        }
+
+        /* Входящее: кремовый листочек с маленьким «хвостиком» слева */
+        .bubble.in {
+            align-self: flex-start;
+            border-bottom-left-radius: 8px;
+            background-color: var(--surface-alt);
+            border: 1px solid var(--line);
+        }
+
+        /* Исходящее: терракотовый — тёплый, заметный */
+        .bubble.out {
+            align-self: flex-end;
+            border-bottom-right-radius: 8px;
+            background: linear-gradient(160deg, var(--accent), var(--accent-deep));
+            color: var(--accent-text);
+        }
+
+        .bubble .label {
+            display: block;
+            font-family: var(--font-title);
+            font-size: 9.5px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.1px;
+            opacity: 0.65;
+            margin-bottom: 5px;
+        }
+
+        .bubble.out .label { opacity: 0.85; }
+
+        /* ── Резюме сессии — красивая карточка-конверт ─────────── */
+
+        .summary {
+            align-self: center;
+            max-width: 94%;
+            background-color: var(--surface);
+            border: 1px solid var(--line);
+            border-left: 4px solid var(--accent);
+            border-radius: 18px;
+            padding: 14px 18px;
+            font-size: 14px;
+            line-height: 1.6;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            box-shadow: var(--shadow);
+            animation: appear 0.28s ease-out;
+        }
+
+        .summary .label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font-title);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: var(--accent-deep);
+            margin-bottom: 8px;
+        }
+
+        /* ── «Он печатает...» ─────────────────────────────────── */
+
+        .typing {
+            align-self: flex-start;
+            display: flex;
+            gap: 5px;
+            padding: 16px 18px;
+            background-color: var(--surface-alt);
+            border-radius: var(--radius);
+            border-bottom-left-radius: 8px;
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+        }
+
+        /* Атрибут hidden обязан побеждать display: flex */
+        .typing[hidden] { display: none; }
+
+        .typing span {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            opacity: 0.35;
+            animation: blink 1.2s infinite;
+        }
+
+        .typing span:nth-child(2) { animation-delay: 0.2s; }
+        .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes blink {
+            0%, 60%, 100% { opacity: 0.25; }
+            30%           { opacity: 1; }
+        }
+
+        /* ── Поле ввода ───────────────────────────────────────── */
+
+        .input-bar {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            padding: 10px 14px;
+            padding-bottom: calc(10px + var(--tg-safe-area-inset-bottom, 0px));
+            background-color: var(--bg);
+            border-top: 1px solid var(--line);
+            flex-shrink: 0;
+        }
+
+        input.input {
+            flex: 1;
+            min-width: 0;
+            font-family: var(--font-body);
+            font-size: 15px;
+            color: var(--text);
+            background-color: var(--surface);
+            border: 1.5px solid transparent;
+            border-radius: var(--radius);
+            padding: 13px 20px;
+            outline: none;
+            box-shadow: var(--shadow);
+        }
+
+        input.input::placeholder { color: var(--text-muted); }
+
+        input.input:focus {
+            border-color: var(--accent);
+        }
+
+        .send-btn {
+            width: 48px;
+            height: 48px;
+            border: none;
+            border-radius: 50%;
+            background: linear-gradient(150deg, var(--accent), var(--accent-deep));
+            color: var(--accent-text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            box-shadow: var(--shadow-deep);
+        }
+
+        .send-btn svg {
+            width: 20px;
+            height: 20px;
+            display: block;
+        }
+
+        .send-btn:active  { transform: scale(0.92); }
+        .send-btn:disabled { opacity: 0.4; }
+
+        /* ── Завершение сессии ────────────────────────────────── */
+
+        .finish-bar {
+            padding: 6px 14px;
+            padding-bottom: calc(8px + var(--tg-safe-area-inset-bottom, 0px));
+            background-color: var(--bg);
+            flex-shrink: 0;
+        }
+
+        .finish-btn {
+            width: 100%;
+            padding: 12px 18px;
+            border: 1.5px solid var(--sage);
+            border-radius: var(--radius);
+            font-family: var(--font-body);
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--sage-deep);
+            background: var(--sage-soft);
+            cursor: pointer;
+            transition: transform 0.15s ease, background-color 0.15s ease,
+                        color 0.15s ease;
+        }
+
+        .finish-btn:hover {
+            background: var(--sage);
+            color: var(--sage-text-on);
+        }
+
+        .finish-btn:active {
+            transform: scale(0.98);
+            background: color-mix(in srgb, var(--sage) 85%, #000 15%);
+            color: var(--sage-text-on);
+        }
+
+        .finish-btn .sub {
+            display: block;
+            font-family: var(--font-title);
+            font-size: 10.5px;
+            font-weight: 500;
+            letter-spacing: 0.4px;
+            opacity: 0.75;
+            margin-top: 2px;
+        }
+
+        /* ── Ламповый экран приветствия (#welcome-screen) ────────
+           Лежит внутри области чата: ввод и кнопка завершения остаются
+           доступными, так что первое сообщение можно отправить сразу —
+           и экран по нему плавно погаснет.                          */
+        .welcome-screen {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 20px;
+            text-align: center;
+            /* Мягкий радиальный градиент — тёплый жёлтый свет лампы */
+            background:
+                radial-gradient(
+                    ellipse 70% 55% at 50% 26%,
+                    rgba(255, 205, 130, 0.28),
+                    rgba(255, 205, 130, 0.10) 45%,
+                    transparent 72%
+                ),
+                var(--bg-chat);
+            opacity: 1;
+            transition: opacity 0.9s ease;
+            pointer-events: auto;
+        }
+        /* Тёмная тема: свет лампы приглушённее */
+        [data-theme="dark"] .welcome-screen {
+            background:
+                radial-gradient(
+                    ellipse 70% 55% at 50% 26%,
+                    rgba(232, 176, 100, 0.20),
+                    rgba(232, 176, 100, 0.07) 45%,
+                    transparent 72%
+                ),
+                var(--bg-chat);
+        }
+
+        /* Плавное исчезновение (fade out) */
+        .welcome-screen.gone {
+            opacity: 0;
+            visibility: hidden;   /* после перехода не ловит события */
+            pointer-events: none;
+            transition: opacity 0.9s ease, visibility 0s linear 0.9s;
+        }
+        /* Мгновенное сокрытие (есть история из базы) — без анимации */
+        .welcome-screen.instant {
+            transition: none;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .welcome-illustration {
+            width: min(300px, 82vw);
+            height: auto;
+            display: block;
+            filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.10));
+        }
+
+        /* Пар над чашкой: плавное поднятие и затухание */
+        .steam path {
+            fill: none;
+            stroke: var(--text-muted);
+            stroke-width: 2.4;
+            stroke-linecap: round;
+            opacity: 0;
+            transform-box: fill-box;
+            transform-origin: 50% 100%;
+            animation: steamRise 3.6s ease-in-out infinite;
+        }
+        .steam path:nth-of-type(2) { animation-delay: 1.2s; }
+        .steam path:nth-of-type(3) { animation-delay: 2.4s; }
+        [data-theme="dark"] .steam path { stroke: #E8E0D6; }
+
+        @keyframes steamRise {
+            0%   { opacity: 0;    transform: translateY(10px) scale(0.94); }
+            35%  { opacity: 0.55; }
+            70%  { opacity: 0.30; }
+            100% { opacity: 0;    transform: translateY(-16px) scale(1.06); }
+        }
+
+        .welcome-title {
+            font-family: var(--font-title);   /* Comfortaa */
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            color: var(--text);
+            margin-top: 18px;
+        }
+
+        .welcome-sub {
+            font-family: var(--font-body);    /* Nunito */
+            font-size: 14.5px;
+            font-weight: 500;
+            line-height: 1.55;
+            color: var(--text-muted);
+            margin-top: 8px;
+            max-width: 300px;
+        }
+
+        /* Подсказка онбординга видна, только пока профиль не заполнен */
+        .welcome-hint {
+            margin-top: 22px;
+            width: min(280px, 80vw);
+            padding: 14px 16px;
+            border: 1px solid var(--line);
+            border-radius: var(--radius-sm);
+            background: var(--surface-alt);
+        }
+        .welcome-hint[hidden] { display: none; }
+        .welcome-hint-text {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--text-muted);
+        }
+        .welcome-btn {
+            margin-top: 10px;
+            width: 100%;
+            padding: 11px 16px;
+            border: none;
+            border-radius: var(--radius);
+            font-family: var(--font-body);
+            font-size: 14.5px;
+            font-weight: 700;
+            color: var(--accent-text);
+            background: var(--accent);
+            cursor: pointer;
+            transition: transform 0.15s ease, background-color 0.15s ease;
+        }
+        .welcome-btn:active { transform: scale(0.98); background: var(--accent-deep); }
+
+        /* ── Кнопка «Попросить совета» под последним сообщением ── */
+        .advice-chip {
+            align-self: center;
+            margin-top: 2px;
+            padding: 7px 16px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: var(--surface);
+            color: var(--accent-deep);
+            font-family: var(--font-body);
+            font-size: 12.5px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+            cursor: pointer;
+            box-shadow: var(--shadow);
+            transition: transform 0.15s ease, opacity 0.15s ease;
+        }
+        .advice-chip:active { transform: scale(0.97); }
+        .advice-chip:disabled { opacity: 0.45; cursor: default; }
+    </style>
+</head>
+<body>
+
+    <!-- Шапка «Наш уголок» -->
+    <header class="header">
+        <div class="header-icon">🌿</div>
+        <div>
+            <div class="header-title">Наш уголок</div>
+            <div class="header-sub">пространство тёплого диалога</div>
+        </div>
+    </header>
+
+    <!-- Окно сообщений — страница дневника -->
+    <main class="chat" id="chat">
+        <div class="system-message">
+            Здесь всё хорошо, что правда. Напишите, что чувствуете —
+            нейросеть мягко переформулирует это, и партнёр увидит 🤍
+        </div>
+        <div class="typing" id="typing" hidden>
+            <span></span><span></span><span></span>
+        </div>
+
+        <!-- ══ Ламповый экран приветствия ═══════════════════════════ -->
+        <!-- Показывается, пока чат пуст; исчезает с первым сообщением. -->
+        <div class="welcome-screen" id="welcome-screen">
+            <svg class="welcome-illustration" viewBox="0 0 320 240" role="img"
+                 aria-label="Стол с двумя чашками, раскрытым блокнотом и суккулентом в глиняном горшочке">
+                <defs>
+                    <!-- мягкий жёлтый свет лампы -->
+                    <radialGradient id="glow" cx="50%" cy="30%" r="62%">
+                        <stop offset="0%"  stop-color="#FFD9A0" stop-opacity="0.55"/>
+                        <stop offset="55%" stop-color="#FFD9A0" stop-opacity="0.20"/>
+                        <stop offset="100%" stop-color="#FFD9A0" stop-opacity="0"/>
+                    </radialGradient>
+                </defs>
+
+                <!-- мягкий рассеянный свет на заднем плане -->
+                <ellipse cx="160" cy="98" rx="152" ry="88" fill="url(#glow)"/>
+
+                <!-- деревянный стол -->
+                <g>
+                    <rect x="8" y="184" width="304" height="16" rx="8" fill="#B07A4E"/>
+                    <rect x="16" y="182.5" width="288" height="5" rx="2.5" fill="#C49062"/>
+                    <!-- текстура дерева: симметричные штрихи -->
+                    <path d="M44,193 h26"  stroke="#96643D" stroke-width="1.6" stroke-linecap="round" opacity="0.5"/>
+                    <path d="M250,193 h26" stroke="#96643D" stroke-width="1.6" stroke-linecap="round" opacity="0.5"/>
+                    <path d="M146,195 h28" stroke="#96643D" stroke-width="1.6" stroke-linecap="round" opacity="0.4"/>
+                </g>
+
+                <!-- мягкие тени предметов на столе (свет сверху, рассеянный) -->
+                <ellipse cx="85"  cy="183" rx="31" ry="4.2" fill="#96643D" opacity="0.22"/>
+                <ellipse cx="235" cy="183" rx="31" ry="4.2" fill="#96643D" opacity="0.22"/>
+                <ellipse cx="160" cy="181" rx="46" ry="4.5" fill="#96643D" opacity="0.25"/>
+
+                <!--
+                    Горшочек с суккулентом: ровно по центру (ось x=160),
+                    стоит ЗА блокнотом — основание скрыто страницами,
+                    рисуем до блокнота, чтобы получилась глубина.
+                -->
+                <g>
+                    <!-- суккулент: плотные толстые листья (эхеверия) -->
+                    <g>
+                        <!-- задний слой: маленькие тёмные листья -->
+                        <path d="M159,126 C150,122 145,114 146,106 C151,111 157,118 159,126 Z" fill="#7E905F"/>
+                        <path d="M161,126 C170,122 175,114 174,106 C169,111 163,118 161,126 Z" fill="#7E905F"/>
+                        <!-- средний слой: большие боковые листья -->
+                        <path d="M159,126 C147,120 138,106 140,96 C141,92 145,93 148,98
+                                 C152,110 156,120 160,126 Z" fill="#9CAF88"/>
+                        <path d="M161,126 C173,120 182,106 180,96 C179,92 175,93 172,98
+                                 C168,110 164,120 160,126 Z" fill="#9CAF88"/>
+                        <!-- центральный лист: самый светлый, ловит свет -->
+                        <path d="M160,127 C154,110 154,94 160,82 C166,94 166,110 160,127 Z" fill="#B9C8AC"/>
+                    </g>
+                    <!-- корпус горшочка: тёплая глина, неровная ручная кромка -->
+                    <path d="M143,132 C152,135.5 165,135.5 175,131.5
+                             L172,170 C166,174.5 152,174.5 147,170 L143,132 Z" fill="#C87256"/>
+                    <!-- полутень на правой грани горшка -->
+                    <path d="M167,133 C168,145 168,158 166,171.5 C168,172.8 170.3,171.6 172,170
+                             L175,131.5 C172.4,133.4 170,133.8 167,133 Z" fill="#B5674E" opacity="0.55"/>
+                    <!-- верхний край горшка (ручной, слегка неаккуратный) -->
+                    <ellipse cx="160" cy="130" rx="19" ry="5" fill="#C87256"/>
+                    <ellipse cx="160" cy="130" rx="14" ry="3.4" fill="#8A5236"/>
+                    <path d="M141.5,129.5 Q160,134.5 178.5,129" stroke="#A05840"
+                          stroke-width="1.6" fill="none" stroke-linecap="round" opacity="0.6"/>
+                </g>
+
+                <!-- раскрытый блокнот: центр композиции, две белые страницы -->
+                <g>
+                    <rect x="115" y="160" width="90" height="20" rx="3.5" fill="#C87256"/>
+                    <path d="M117,157 C136,150.5 152,150 160,154
+                             C168,150 184,150.5 203,157
+                             L203,177 C184,170.5 168,170 160,174
+                             C152,170 136,170.5 117,177 Z" fill="#F8F2E7"/>
+                    <!-- корешок -->
+                    <path d="M160,154 L160,174" stroke="#D9C8AC" stroke-width="1.4" stroke-linecap="round"/>
+                    <!-- едва заметные строки (полутон) -->
+                    <path d="M126,163.5 C137,159.5 148,159.5 156,162.5" stroke="#CBBB9E"
+                          stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.8"/>
+                    <path d="M194,163.5 C183,159.5 172,159.5 164,162.5" stroke="#CBBB9E"
+                          stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.8"/>
+                </g>
+
+                <!-- левая чашка: терракотовая, симметрично слева (ось x=85) -->
+                <g>
+                    <ellipse cx="85" cy="137" rx="27" ry="6.5" fill="#E9A98F"/>
+                    <ellipse cx="85" cy="137" rx="21" ry="4.6" fill="#B5674E"/>
+                    <rect x="58" y="136" width="54" height="46" rx="14" fill="#D98A72"/>
+                    <!-- ручка: крепится к середине левой стенки, висит в воздухе -->
+                    <path d="M59,148 C46,146 45,166 59,164"
+                          stroke="#C87256" stroke-width="7" fill="none" stroke-linecap="round"/>
+                </g>
+
+                <!-- правая чашка: шалфейная, зеркальная (ось x=235) -->
+                <g>
+                    <ellipse cx="235" cy="137" rx="27" ry="6.5" fill="#B9C8AC"/>
+                    <ellipse cx="235" cy="137" rx="21" ry="4.6" fill="#7E905F"/>
+                    <rect x="208" y="136" width="54" height="46" rx="14" fill="#9CAF88"/>
+                    <!-- ручка: зеркально, середина правой стенки -->
+                    <path d="M261,148 C274,146 275,166 261,164"
+                          stroke="#7E905F" stroke-width="7" fill="none" stroke-linecap="round"/>
+                </g>
+
+                <!-- тонкий пар над терракотовой чашкой -->
+                <g class="steam">
+                    <path d="M75,128 c-5,-7 5,-12 0,-19 c-5,-7 5,-12 0,-18"/>
+                    <path d="M86,126 c5,-7 -5,-12 0,-19 c5,-7 -5,-12 0,-18"/>
+                    <path d="M96,128 c-5,-7 5,-12 0,-19"/>
+                </g>
+
+                <!-- тонкий пар над шалфейной чашкой (зеркально) -->
+                <g class="steam">
+                    <path d="M226,128 c5,-7 -5,-12 0,-19 c5,-7 -5,-12 0,-18"/>
+                    <path d="M235,126 c-5,-7 5,-12 0,-19 c-5,-7 5,-12 0,-18"/>
+                    <path d="M245,128 c5,-7 -5,-12 0,-19"/>
+                </g>
+            </svg>
+
+            <div class="welcome-title">Место, где вас слышат</div>
+            <div class="welcome-sub">Сделайте паузу. Нейросеть поможет перевести эмоции в слова.</div>
+
+            <!-- Подсказка онбординга: видна, только пока профиль не заполнен -->
+            <div class="welcome-hint" id="welcomeHint" hidden>
+                <div class="welcome-hint-text">
+                    Сначала познакомимся: имя и пол, суть конфликта —
+                    два коротких вопроса в боте
+                </div>
+                <button class="welcome-btn" id="welcomeStart" type="button">
+                    Пройти знакомство в боте
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Поле ввода -->
+    <form class="input-bar" id="sendForm">
+        <input class="input" id="messageInput"
+               type="text" placeholder="Напишите, что чувствуете..."
+               autocomplete="off" maxlength="1000">
+        <button class="send-btn" type="submit" id="sendBtn" title="Отправить">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 19V5"/>
+                <path d="M5 12l7-7 7 7"/>
+            </svg>
+        </button>
+    </form>
+
+    <!-- Завершение сессии -->
+    <div class="finish-bar">
+        <button class="finish-btn" id="finishBtn" type="button">
+            🕊 Завершить сессию
+            <span class="sub">получить резюме конфликта с советом</span>
+        </button>
+    </div>
+
+    <!-- Приветственный экран заменён на блок #welcome-screen внутри чата -->
+
+    <script>
+        // Инициализация Telegram Web App.
+        // Тема (светлая/тёмная) берётся из colorScheme Telegram и кладётся
+        // в data-theme — вся палитра «ламповый дневник» описана в CSS.
+
+        const tg = window.Telegram && window.Telegram.WebApp;
+
+        // Тема: внутри Telegram — colorScheme телефона,
+        // вне Telegram — системная настройка браузера.
+        function applyTheme(scheme) {
+            document.documentElement.dataset.theme =
+                scheme === "dark" ? "dark" : "light";
+        }
+        if (tg) {
+            applyTheme(tg.colorScheme);
+            tg.onEvent("themeChanged", () => applyTheme(tg.colorScheme));
+        } else {
+            applyTheme(
+                window.matchMedia("(prefers-color-scheme: dark)").matches
+                    ? "dark"
+                    : "light"
+            );
+        }
+        // Демо-сцена: заполняем чат примерами сообщений,
+        // чтобы оценить внешний вид до подключения сервера.
+        const chat = document.getElementById("chat");
+        const typing = document.getElementById("typing");
+
+        // Кнопка «Попросить совета» — маленький чип, который всегда
+        // держится ПОД последним сообщением в чате. Создаётся при первом
+        // сообщении (когда экран приветствия угасает), после /finish — убирается.
+        let adviceChip = null;
+
+        function addMessage(text, direction, label) {
+            // Первое сообщение в чате плавно гасит ламповый экран
+            hideWelcome(false);
+            const el = document.createElement("div");
+            el.className = "bubble " + direction;
+            if (label) {
+                const l = document.createElement("span");
+                l.className = "label";
+                l.textContent = label;
+                el.appendChild(l);
+            }
+            el.appendChild(document.createTextNode(text));
+            chat.insertBefore(el, typing);
+
+            // Чип-кнопка всегда переезжает в самый низ — под последнее сообщение
+            if (!adviceChip) adviceChip = createAdviceChip();
+            chat.insertBefore(adviceChip, typing);
+        }
+
+        // Финальная карточка резюме сессии (по кнопке «Завершить сессию»)
+        function addSummary(text, label) {
+            const el = document.createElement("div");
+            el.className = "summary";
+            const l = document.createElement("span");
+            l.className = "label";
+            l.textContent = label || "Резюме сессии — компромисс";
+            el.appendChild(l);
+            el.appendChild(document.createTextNode(text));
+            chat.insertBefore(el, typing);
+        }
+
+        // Реальная отправка: POST /api/send на бэкенде FastAPI.
+        // Внутри Telegram берём настоящий Telegram ID из initDataUnsafe.user.id.
+        // В обычном браузере (вне Telegram) используется TEST_USER_ID —
+        // введите сюда свой ID, полученный у бота командой /myid.
+        const TEST_USER_ID = 631630724; // ← заменили на реальный ID (тесты из браузера)
+
+        function getCurrentUserId() {
+            const tgUser = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+            if (tgUser && tgUser.id) {
+                return tgUser.id;
+            }
+            return TEST_USER_ID;
+        }
+
+        // ── Синхронизация: опрос /api/history каждые 3 секунды ─────────────
+        // knownIds — id всех сообщений, УЖЕ показанных на экране (свои,
+        // пришедшие из ответа /api/send, и чужие, пришедшие из истории).
+        // Так fetchHistory никогда не нарисует одно сообщение второй раз.
+        const knownIds = new Set();
+        let maxHistoryId = 0;      // id последнего сообщения из истории
+        let historyTimer = null;   // интервал держим в переменной — можно остановить
+
+        // ── Ламповый экран приветствия (#welcome-screen) ────────────────
+        // Показывается, пока в чате нет ни одного сообщения. Исчезает:
+        //  - плавно (fade out 0.9s) с появлением первого сообщения
+        //    (своего — из формы отправки, чужого — из опроса истории);
+        //  - мгновенно, если история уже есть в базе (первый проход
+        //    fetchHistory с after_id=0 вернул непустой список).
+        // Подсказка онбординга внутри экрана видна, только пока профиль
+        // не заполнен в боте (/api/history возвращает profile_ready=false).
+        const welcomeScreen = document.getElementById("welcome-screen");
+        let welcomeGone = false;
+        let firstHistoryChecked = false;  // первая проверка истории при загрузке
+
+        function hideWelcome(instant) {
+            if (welcomeGone) return;
+            welcomeGone = true;
+            welcomeScreen.classList.add("gone");
+            if (instant) {
+                // История из базы: скрываем без анимации
+                welcomeScreen.classList.add("instant");
+            } else {
+                // После затухания освобождаем место: вкладка полностью
+                // удаляется, чтобы чат занял всё пространство
+                welcomeScreen.addEventListener("transitionend", () => {
+                    welcomeScreen.remove();
+                }, { once: true });
+            }
+        }
+
+        function applyProfileReady(profileReady) {
+            const hint = document.getElementById("welcomeHint");
+            if (hint) hint.hidden = profileReady;
+        }
+
+        document.getElementById("welcomeStart").addEventListener("click", () => {
+            if (tg) {
+                tg.openTelegramLink("https://t.me/EcoTalkSpace_bot");
+            } else {
+                // Вне Telegram: открываем бота в новой вкладке браузера
+                window.open("https://t.me/EcoTalkSpace_bot", "_blank");
+            }
+        });
+
+        // ── «Попросить совета» (/api/expand) ────────────────────────────
+        // Аналог Telegram-кнопки «Раскрыть подробнее»: берём последнее
+        // СВОЁ сообщение в сессии и просим нейросеть сформулировать,
+        // что именно сказать партнёру. Ответ видит только запросивший.
+        function createAdviceChip() {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "advice-chip";
+            chip.textContent = "Попросить совета";
+            chip.addEventListener("click", async () => {
+                chip.disabled = true;
+                typing.hidden = false;
+                chat.scrollTop = chat.scrollHeight;
+
+                try {
+                    const initData = (tg && tg.initData) || "";
+                    const payload = initData
+                        ? { init_data: initData }
+                        : { user_id: getCurrentUserId() };
+
+                    const res = await fetch("/api/expand", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await res.json();
+                    if (data.advice) {
+                        // Совет приватный: пузырь только у нажавшего,
+                        // партнёру он не отправляется и в историю не пишется
+                        addMessage(data.advice, "in", "Совет медиатора: что сказать партнёру");
+                    } else {
+                        addMessage(
+                            data.error || "Неизвестная ошибка сервера",
+                            "out",
+                            "Ошибка"
+                        );
+                    }
+                } catch (err) {
+                    addMessage("Нет связи с сервером: " + err, "out", "Ошибка");
+                } finally {
+                    typing.hidden = true;
+                    chip.disabled = false;
+                    chat.scrollTop = chat.scrollHeight;
+                }
+            });
+            return chip;
+        }
+
+        // Параметры аутентификации для GET /api/history:
+        // из Telegram — подписанный initData, из браузера — TEST_USER_ID.
+        // S4: after_id — курсор инкрементальной истории: сервер отдаёт
+        // только сообщения новее maxHistoryId (при старте 0 — вся история).
+        function getHistoryQuery() {
+            const initData = (tg && tg.initData) || "";
+            const auth = initData
+                ? "init_data=" + encodeURIComponent(initData)
+                : "user_id=" + encodeURIComponent(getCurrentUserId());
+            return auth + "&after_id=" + encodeURIComponent(maxHistoryId);
+        }
+
+        async function fetchHistory() {
+            try {
+                const res = await fetch("/api/history?" + getHistoryQuery());
+                const data = await res.json();
+                // Онбординг: подсказка знакомства видна, пока профиль пуст
+                if (typeof data.profile_ready === "boolean") {
+                    applyProfileReady(data.profile_ready);
+                }
+                // Первый проход при загрузке: если история уже есть в базе,
+                // экран скрывается СРАЗУ (без анимации), не дожидаясь отрисовки
+                if (!firstHistoryChecked) {
+                    firstHistoryChecked = true;
+                    if ((data.messages || []).length > 0) {
+                        hideWelcome(true);
+                    }
+                }
+                let hasNew = false;
+                for (const msg of data.messages || []) {
+                    // Всё, что уже показано (по id), второй раз НЕ рисуем
+                    if (msg.id <= maxHistoryId || knownIds.has(msg.id)) continue;
+                    knownIds.add(msg.id);
+                    if (msg.id > maxHistoryId) maxHistoryId = msg.id;
+                    // Цвет по отправителю: мои переформулировки — синие,
+                    // партнёрские — серые входящие
+                    const mine = msg.sender_id === getCurrentUserId();
+                    addMessage(
+                        msg.rephrased,
+                        mine ? "out" : "in",
+                        "Переформулировано нейросетью"
+                    );
+                    hasNew = true;
+                }
+                if (hasNew) {
+                    chat.scrollTop = chat.scrollHeight;
+                }
+            } catch (err) {
+                // Сервер недоступен — тихо ждём следующего прохода опроса
+                console.warn("fetchHistory:", err);
+            }
+        }
+
+        function startHistoryPolling() {
+            clearInterval(historyTimer); // защита от повторного запуска
+            historyTimer = setInterval(fetchHistory, 3000);
+            fetchHistory(); // первая подгрузка не должна ждать 3 секунды
+        }
+
+        document.getElementById("sendForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const input = document.getElementById("messageInput");
+            const text = input.value.trim();
+            if (!text) return;
+            addMessage(text, "in", "Вы: до переформулировки");
+            input.value = "";
+
+            // Пока ждём ответ нейросети — показываем «печатает...»
+            typing.hidden = false;
+            chat.scrollTop = chat.scrollHeight;
+
+            try {
+                // Внутри Telegram шлём initData (подписанную Telegram строку) —
+                // backend проверит подпись HMAC-SHA256 и сам извлечёт user_id.
+                // initData пуст ТОЛЬКО в обычном браузере → fallback на TEST_USER_ID.
+                // В продакшене fallback-ветки не будет: сайт всегда открывается из Telegram.
+                const initData = (tg && tg.initData) || "";
+                const payload = initData
+                    ? { init_data: initData }
+                    : { user_id: getCurrentUserId() };
+
+                const res = await fetch("/api/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json();
+                if (data.blocked) {
+                    // Проверка безопасности: реальная угроза — сервер не
+                    // переформулировал и не переслал сообщение партнёру.
+                    // Рисуем жёсткий ответ отдельной "системной" карточкой.
+                    addMessage(data.message, "in", "Система безопасности");
+                } else if (data.rephrased) {
+                    // backend вернул id записи — помечаем как показанное,
+                    // иначе опрос /api/history добавит его ещё раз
+                    if (typeof data.id === "number") {
+                        knownIds.add(data.id);
+                        if (data.id > maxHistoryId) maxHistoryId = data.id;
+                    }
+                    addMessage(data.rephrased, "out", "Переформулировано нейросетью");
+                } else {
+                    addMessage(
+                        data.error || "Неизвестная ошибка сервера",
+                        "out",
+                        "Ошибка"
+                    );
+                }
+            } catch (err) {
+                addMessage("Нет связи с сервером: " + err, "out", "Ошибка");
+            } finally {
+                typing.hidden = true;
+                chat.scrollTop = chat.scrollHeight;
+            }
+        });
+
+        // ── Завершение сессии: POST /api/finish → резюме от DeepSeek ────
+        document.getElementById("finishBtn").addEventListener("click", async (e) => {
+            e.preventDefault();
+            const initData = (tg && tg.initData) || "";
+            const payload = initData
+                ? { init_data: initData }
+                : { user_id: getCurrentUserId() };
+
+            typing.hidden = false;
+            chat.scrollTop = chat.scrollHeight;
+
+            try {
+                const res = await fetch("/api/finish", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json();
+                if (data.summary) {
+                    addSummary(data.summary);
+                    // Сессия в базе завершена — останавливаем опрос истории
+                    clearInterval(historyTimer);
+                    // Чип «Попросить совета» больше не имеет смысла:
+                    // сессия и её сообщения удалены
+                    if (adviceChip) {
+                        adviceChip.remove();
+                        adviceChip = null;
+                    }
+                } else if (data.cancelled) {
+                    // Партнёр ещё не подключился: сервер удалил сессию
+                    // (односторонний выход из ожидания). Чистим чат от
+                    // пузырей прежней сессии и останавливаем опрос —
+                    // страница готова к новой сессии (её создаёт /start в боте)
+                    clearInterval(historyTimer);
+                    chat.querySelectorAll(".bubble, .summary").forEach(el => el.remove());
+                    knownIds.clear();
+                    maxHistoryId = 0;
+                    addMessage(
+                        data.message
+                            || "Сессия отменена. Нажмите /start в боте, чтобы создать новую",
+                        "out",
+                        "Отмена"
+                    );
+                    // addMessage по умолчанию рисует чип совета — отмене не к чему
+                    if (adviceChip) {
+                        adviceChip.remove();
+                        adviceChip = null;
+                    }
+                } else {
+                    addMessage(data.error || "Неизвестная ошибка сервера", "out", "Ошибка");
+                }
+            } catch (err) {
+                addMessage("Нет связи с сервером: " + err, "out", "Ошибка");
+            } finally {
+                typing.hidden = true;
+                chat.scrollTop = chat.scrollHeight;
+            }
+        });
+
+        // Публичное API Telegram: сообщаем, что приложение готово,
+        // разворачиваем на весь экран и спрашиваем подтверждение закрытия.
+        if (tg) {
+            tg.ready();
+            tg.expand();
+            tg.enableClosingConfirmation();
+        }
+
+        // Живой чат: подтягиваем историю и новые сообщения партнёра
+        startHistoryPolling();
+    </script>
+</body>
+</html>
