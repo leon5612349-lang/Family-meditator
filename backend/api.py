@@ -421,9 +421,28 @@ async def finish(request: FinishRequest, http: Request) -> JSONResponse:
     # Полная история: оригиналы + переформулировки (как у бота)
     messages = await database.get_session_messages(session_id)
     if not messages:
+        # Пустая сессия: нечего резюмировать — отпускаем пользователя сразу
+        try:
+            await database.delete_session(session_id)
+            info = await database.get_user_info(user_id)
+            await database.update_profile(
+                user_id, (info or {}).get("name") or "", None, None
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"ERROR (отмена пустой сессии, /api/finish {user_id}): {e!r}")
+            return JSONResponse(
+                {
+                    "error": "Техническая проблема, "
+                    "пожалуйста, повторите попытку через минуту"
+                },
+                status_code=500,
+            )
         return JSONResponse(
-            {"error": "В сессии пока не было сообщений — анализировать нечего"},
-            status_code=400,
+            {
+                "cancelled": True,
+                "message": "Пустая сессия отменена. Нажмите /start в боте, "
+                "чтобы создать новую",
+            }
         )
 
     # S2: атомарная блокировка от двойного finish (как у бота: тот же

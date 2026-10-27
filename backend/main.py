@@ -300,17 +300,45 @@ async def command_start_handler(message: Message, command: CommandObject) -> Non
             await _send_name_question(message.answer, "Давайте продолжим знакомство:")
             return
 
-        if session_id == user_id:
-            # Пользователь — создатель сессии (user1)
+        # Мёртвая сессия: в ней нет ни одного сообщения. Она держит
+        # пользователя в «диалоге», не давая начать заново, — чистим и
+        # проваливаемся ниже, чтобы /start сразу создал новую сессию.
+        messages = await database.get_session_messages(session_id)
+        if not messages:
             partner_id = await database.get_session_partner(session_id, user_id)
-            link = f"https://t.me/{bot_username}?start=invite_{session_id}"
+            try:
+                await database.delete_session(session_id)
+                await database.update_profile(
+                    user_id, (info or {}).get("name") or "", None, None
+                )
+            except Exception as e:  # noqa: BLE001 — H5: не молчим при сбое БД
+                print(f"ERROR (очистка пустой сессии, /start {user_id}): {e!r}")
+                await message.answer(
+                    "Техническая проблема, пожалуйста, повторите попытку через минуту"
+                )
+                return
             if partner_id is not None:
-                await message.answer("Вы уже в диалоге с партнёром. Завершить — команда /finish")
-            else:
-                await message.answer(f"Вы в ожидании партнёра. Его ссылка:\n{link}")
+                # Партнёр был в этой пустой сессии тоже — честно скажем ему
+                try:
+                    await bot.send_message(
+                        partner_id,
+                        "Пустая сессия отменена. Нажмите /start, чтобы начать заново",
+                    )
+                except Exception as e:  # noqa: BLE001 — уведомление не критично
+                    print(f"ERROR (уведомление партнёра о пустой сессии, {user_id}): {e!r}")
+            # fall-through: ниже /start создаёт новую сессию и запускает онбординг
         else:
-            await message.answer("Вы уже подключены к партнёру. Завершить — команда /finish")
-        return
+            if session_id == user_id:
+                # Пользователь — создатель сессии (user1)
+                partner_id = await database.get_session_partner(session_id, user_id)
+                link = f"https://t.me/{bot_username}?start=invite_{session_id}"
+                if partner_id is not None:
+                    await message.answer("Вы уже в диалоге с партнёром. Завершить — команда /finish")
+                else:
+                    await message.answer(f"Вы в ожидании партнёра. Его ссылка:\n{link}")
+            else:
+                await message.answer("Вы уже подключены к партнёру. Завершить — команда /finish")
+            return
 
     # Новая сессия: id сессии = Telegram ID создателя
     try:
@@ -363,7 +391,23 @@ async def finish_handler(message: Message) -> None:
 
     messages = await database.get_session_messages(session_id)
     if not messages:
-        await message.answer("В сессии пока не было сообщений — анализировать нечего.")
+        # Сессия «висит» без единого сообщения: держит пользователя в
+        # диалоге, не давая начать заново. Отменяем её сразу.
+        try:
+            await database.delete_session(session_id)
+            info = await database.get_user_info(user_id)
+            await database.update_profile(
+                user_id, (info or {}).get("name") or "", None, None
+            )
+        except Exception as e:  # noqa: BLE001 — H5: не молчим при сбое БД
+            print(f"ERROR (отмена пустой сессии, /finish {user_id}): {e!r}")
+            await message.answer(
+                "Техническая проблема, пожалуйста, повторите попытку через минуту"
+            )
+            return
+        await message.answer(
+            "Пустая сессия отменена. Вы можете начать заново командой /start"
+        )
         return
 
     # S2: атомарная блокировка от двойного /finish (одновременно нажали
