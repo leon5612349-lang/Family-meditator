@@ -27,6 +27,7 @@ if str(BACKEND_DIR) not in sys.path:
 import api
 import database
 import llm
+import therapy
 import uvicorn
 
 # Без этой строки aiogram молчит: сообщения "Run polling for bot..." идут
@@ -207,6 +208,21 @@ async def _onboarding_step(message: Message, text: str) -> None:
                 "Отправьте партнёру эту ссылку — он подключится к сессии:\n"
                 f"{link}"
             )
+            # «Водопад»: если партнёр уже прикреплён и прошёл знакомство
+            # раньше создателя — каскад 1 запускается именно тут
+            partner_now = await database.get_session_partner(
+                state["session_id"], user_id
+            )
+            info_partner = (
+                await database.get_user_info(partner_now)
+                if partner_now is not None
+                else None
+            )
+            if partner_now is not None and info_partner and info_partner.get("gender"):
+                try:
+                    await therapy.start_first_cascade(state["session_id"], bot)
+                except Exception as e:  # noqa: BLE001
+                    print(f"ERROR (therapy.start_first_cascade, {user_id}): {e!r}")
         else:
             await message.answer(
                 "Спасибо! Вы подключены друг к другу. Начинайте диалог — "
@@ -220,6 +236,12 @@ async def _onboarding_step(message: Message, text: str) -> None:
                 )
             except Exception as e:  # noqa: BLE001 — не критично
                 print(f"ERROR (уведомление создателю о готовности, {user_id}): {e!r}")
+
+            # «Водопад»: оба прошли знакомство — запускаем Каскад 1, ступень A
+            try:
+                await therapy.start_first_cascade(state["session_id"], bot)
+            except Exception as e:  # noqa: BLE001 — лучше медиация без ступеней
+                print(f"ERROR (therapy.start_first_cascade, {state['session_id']}): {e!r}")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -488,6 +510,12 @@ async def rephrase_message_handler(message: Message) -> None:
         await message.answer("Ожидаем вашего партнера...")
         return
 
+    # «Водопад»: сессия без ступени (создана раньше фичи) — запускаем сами
+    try:
+        await therapy.ensure_started(session_id, bot)
+    except Exception as e:  # noqa: BLE001
+        print(f"ERROR (therapy.ensure_started, {user_id}): {e!r}")
+
     # S7: серверный лимит длины — не отправляем в нейросеть, что и дорого,
     # и бессмысленно; фронтенде maxlength=1000, а боту Telegram даёт 4096.
     if len(text) > 2000:
@@ -576,6 +604,13 @@ async def rephrase_message_handler(message: Message) -> None:
         )
     except Exception as e:  # noqa: BLE001 — подсказка не критична
         print(f"ERROR (inline keyboard, отправка подсказки {user_id}): {e!r}")
+
+    # «Водопад» (ЭФТ): ответ владельца ступени двигает сессию дальше
+    # (A -> B -> Lake; ступени Lake ведут только кнопка «Дальше»)
+    try:
+        await therapy.maybe_advance(session_id, user_id, bot)
+    except Exception as e:  # noqa: BLE001 — ход важнее ступени
+        print(f"ERROR (therapy.maybe_advance, {user_id}): {e!r}")
 
 
 @dp.callback_query(F.data.in_({"gender_male", "gender_female"}))
@@ -676,6 +711,47 @@ async def change_gender_handler(callback: CallbackQuery) -> None:
             await callback.message.answer("Выберите пол:", reply_markup=_gender_keyboard())
         except Exception as e2:  # noqa: BLE001 — не критично
             print(f"ERROR (повторный выбор пола, {user_id}): {e2!r}")
+
+
+@dp.callback_query(F.data == therapy.LAKE_CALLBACK)
+async def next_cascade_handler(callback: CallbackQuery) -> None:
+    """Кнопка «🌊 Мы услышали друг друга. Дальше»: движение по водопаду.
+
+    Один нажал — ставим его флаг и отвечаем «Ждем партнера...».
+    Оба нажали — сбрасываем флаги и переходим на следующий шаг каскада.
+    Работает и в боте, и совместно с Mini App (/api/next-cascade):
+    у них общий флаг в БД.
+    """
+    user_id = callback.from_user.id
+    session_id = await database.get_user_session(user_id)
+    if session_id is None:
+        try:
+            await callback.answer("Сессия не найдена", show_alert=True)
+        except Exception:  # noqa: BLE001
+            pass
+        return
+
+    await database.set_ready_for_next(user_id, True)
+
+    new_step = await therapy.try_advance_from_lake(session_id, bot)
+    if new_step is not None:
+        try:
+            await callback.answer()
+        except Exception:  # noqa: BLE001
+            pass
+        return
+
+    # Партнёр ещё не нажал: "" ждём ("... "")
+    step_now = await database.get_current_step(session_id)
+    note = (
+        "Ждем партнера..."
+        if not therapy.is_finished(step_now)
+        else "Это финальная ступень — завершите сессию командой /finish"
+    )
+    try:
+        await callback.answer(note, show_alert=False)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @dp.callback_query(F.data == "expand_context")

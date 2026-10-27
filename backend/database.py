@@ -27,6 +27,7 @@ import os
 import aiosqlite
 
 import os
+import time
 from contextlib import asynccontextmanager
 
 import aiosqlite
@@ -82,6 +83,23 @@ async def init_db() -> None:
             await conn.execute("ALTER TABLE users ADD COLUMN gender TEXT")
         if "about" not in columns:
             await conn.execute("ALTER TABLE users ADD COLUMN about TEXT")
+        # «Водопад» (EFT): флаг «нажал кнопку Дальше» — индивидуальный,
+        # поэтому хранится на самом пользователе
+        if "is_ready_for_next" not in columns:
+            await conn.execute(
+                "ALTER TABLE users ADD COLUMN is_ready_for_next INTEGER DEFAULT 0"
+            )
+        # «Водопад»: состояние ступени сессии — общее для обоих партнёров,
+        # хранится в отдельной таблице (одна строка на сессию)
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_id   INTEGER PRIMARY KEY,
+                current_step TEXT NOT NULL DEFAULT 'CASCADE_1_A',
+                started_at   REAL
+            )
+            """
+        )
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
@@ -347,11 +365,12 @@ async def get_session_messages_for_api(
 
 async def delete_session(session_id: int) -> None:
     """Завершает сессию: удаляет сообщения, отвязывает участников,
-    освобождает слот партнёра и блокировку finish (S2/S3)."""
+    освобождает слот партнёра, блокировку finish и состояние «Водопада»."""
     async with _connect() as conn:
         await conn.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
         await conn.execute(
-            "UPDATE users SET session_id = NULL WHERE session_id = ?",
+            "UPDATE users SET session_id = NULL, is_ready_for_next = 0 "
+            "WHERE session_id = ?",
             (session_id,),
         )
         await conn.execute(
@@ -360,4 +379,59 @@ async def delete_session(session_id: int) -> None:
         await conn.execute(
             "DELETE FROM finish_locks WHERE session_id = ?", (session_id,)
         )
+        # «Водопад»: состояние ступени этой сессии тоже стирается
+        await conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
         await conn.commit()
+
+
+async def get_current_step(session_id: int) -> str | None:
+    """Ступень «Водопада» для сессии или None, если он ещё не запущен."""
+    async with _connect() as conn:
+        cursor = await conn.execute(
+            "SELECT current_step FROM sessions WHERE session_id = ?", (session_id,)
+        )
+        row = await cursor.fetchone()
+        return row[0] if row else None
+
+
+async def set_current_step(session_id: int, step: str) -> None:
+    """Сохраняет (или перезапускает) ступень «Водопада» для сессии."""
+    async with _connect() as conn:
+        await conn.execute(
+            """
+            INSERT INTO sessions (session_id, current_step, started_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(session_id) DO UPDATE
+            SET current_step = excluded.current_step
+            """,
+            (session_id, step, time.time()),
+        )
+        await conn.commit()
+
+
+async def set_ready_for_next(user_id: int, value: bool) -> None:
+    """Отмечает нажатие кнопки «🌊 Дальше» конкретным участником."""
+    async with _connect() as conn:
+        await conn.execute(
+            "UPDATE users SET is_ready_for_next = ? WHERE id = ?",
+            (1 if value else 0, user_id),
+        )
+        await conn.commit()
+
+
+async def get_cascade_readiness(session_id: int) -> tuple[int, int]:
+    """Сколько участников сессии нажали «Дальше» (из двух возможных)."""
+    async with _connect() as conn:
+        cursor = await conn.execute(
+            """
+            SELECT COUNT(*) FROM users
+            WHERE session_id = ? AND is_ready_for_next = 1
+            """,
+            (session_id,),
+        )
+        (ready,) = await cursor.fetchone()
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM users WHERE session_id = ?", (session_id,)
+        )
+        (total,) = await cursor.fetchone()
+        return ready, total

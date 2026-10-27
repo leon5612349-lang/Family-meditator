@@ -28,6 +28,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 import database
 import llm
+import therapy
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -93,62 +94,161 @@ def validate_init_data(init_data: str, bot_token: str) -> dict | None:
        — должен совпасть с полем "hash" из initData.
     4. H1: поле auth_date не старше AUTH_MAX_AGE секунд (24 часа) —
        перехваченная старая строка initData бесполезна.
+
+    Проверяются ДВА варианта data_check_string (приём любой из подписей):
+    - "percent-encoded": пары как пришли (без декодирования);
+    - "decoded": значения один раз декодированы (parse_qsl) и взяты как есть.
+    В строке остаются ВСЕ поля, кроме hash — в т.ч. новое поле signature.
+    Доказано на живых initData (2026-10-27): актуальные клиенты подписывают
+    по варианту "decoded".
     """
+    # Отладка 401: сырые данные печатаем ДО любых проверок — видно,
+    # что реально прислал фронтенд (в браузере это пустая строка)
+    print(
+        f"[initData] raw ({len(init_data or '')} симв.): {init_data!r}; "
+        f"bot_token: длина {len(bot_token or '')}={(bot_token or '')[:2]}:..."
+    )
     if not init_data or not bot_token:
+        print(
+            f"[initData] ОТКАЗ: init_data={'пуст' if not init_data else 'есть'}, "
+            f"bot_token={'ПУСТОЙ (неверно загружен .env!)' if not bot_token else 'есть'}"
+        )
         return None
 
     try:
         received_hash = None
-        raw_pairs = []  # пары в исходном (percent-encoded) виде — их и проверяем
+        raw_pairs = []  # пары в исходном (percent-encoded) виде
         for pair in init_data.split("&"):
             if pair.startswith("hash="):
                 received_hash = pair[len("hash="):]
             else:
                 raw_pairs.append(pair)
         if not received_hash or not raw_pairs:
+            print(
+                f"[initData] ОТКАЗ: не нашёл hash или пары "
+                f"(hash={'есть' if received_hash else 'НЕТ'}, пар={len(raw_pairs)}); "
+                f"сырые данные: {init_data!r}"
+            )
             return None
 
-        data_check_string = "\n".join(sorted(raw_pairs))
+        # Проверяем ДВА варианта data_check_string: разные поколения клиентов
+        # Telegram подписывают по-разному. Поле signature (RSA) остаётся в
+        # строке всегда — исключается только hash (доказано на живых initData
+        # 2026-10-27: совпадает вариант с ДЕКОДИРОВАННЫМИ значениями).
+        decoded_pairs = parse_qsl(init_data, keep_blank_values=True)
+        decoded_pairs = [(k, v) for k, v in decoded_pairs if k != "hash"]
+
+        raw_check_string = "\n".join(sorted(raw_pairs))
+        decoded_check_string = "\n".join(
+            f"{k}={v}" for k, v in sorted(decoded_pairs)
+        )
+
         secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
-        calculated = hmac.new(
-            secret_key, data_check_string.encode(), hashlib.sha256
+        hash_raw = hmac.new(
+            secret_key, raw_check_string.encode("utf-8"), hashlib.sha256
         ).hexdigest()
-        if not hmac.compare_digest(calculated, received_hash):
+        hash_decoded = hmac.new(
+            secret_key, decoded_check_string.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+
+        raw_matched = hmac.compare_digest(hash_raw, received_hash)
+        decoded_matched = hmac.compare_digest(hash_decoded, received_hash)
+        if not (raw_matched or decoded_matched):
+            token_hint = "похож на формат `id:random`" if bot_token[:2].isdigit() else \
+                "НЕ похоже на формат `id:random`"
+            print(
+                "[initData] ХЭШИ НЕ СОВПАЛИ (оба варианта):\n"
+                f"  сырые init_data ({len(init_data)} симв.): {init_data!r}\n"
+                f"  dcs (percent-encoded): {raw_check_string!r}\n"
+                f"  dcs (декодированные):  {decoded_check_string!r}\n"
+                f"  hash от Telegram:    {received_hash}\n"
+                f"  hash raw-варианта:   {hash_raw}\n"
+                f"  hash decoded-варианта: {hash_decoded}\n"
+                f"  bot_token: первые 2 симв. {bot_token[:2]}:..., длина {len(bot_token)} — "
+                f"токен {token_hint}; проверь, что он ТОТ ЖЕ, что у работающего бота, "
+                "без пробелов и переноса строки"
+            )
             return None
+
+        variant = "decoded" if decoded_matched else "percent-encoded"
+        print(f"[initData] подпись ОК (вариант {variant})")
 
         # Подпись верна — проверяем свежесть и достаём user
         fields = dict(parse_qsl(init_data, keep_blank_values=True))
+        print(
+            f"[initData] user id="
+            f"{json.loads(fields.get('user', '{}')).get('id')}; проверяем auth_date"
+        )
         try:
             auth_ts = int(fields.get("auth_date", ""))
         except (TypeError, ValueError):
+            print(f"[initData] ОТКАЗ: auth_date отсутствует/не число: {fields.get('auth_date')!r}")
             return None  # auth_date отсутствует или не число — отклоняем
-        if time.time() - auth_ts > AUTH_MAX_AGE:
+        age = time.time() - auth_ts
+        if age > AUTH_MAX_AGE:
+            print(f"[initData] ОТКАЗ: initData старше суток: возраст {age:.0f} сек")
             return None  # initData старше суток — отклоняем (H1)
+        print(f"[initData] ВСЁ ОК: возраст initData {age:.0f} сек")
 
         user_raw = fields.get("user", "")
         return json.loads(user_raw) if user_raw else None
-    except Exception:  # noqa: BLE001 — битые данные считаем невалидными
+    except Exception as e:  # noqa: BLE001 — битые данные считаем невалидными
+        print(f"[initData] ОТКАЗ: исключение при разборе: {e!r}; сырые данные: {init_data!r}")
         return None
 
 
-def _fallback_allowed(http_request: Request) -> bool:
-    """C2: браузерный fallback (пустой initData) разрешён ТОЛЬКО с localhost.
+def _resolve_user(
+    init_data: str,
+    fallback_user_id: int | None,
+    http_request: Request,
+    endpoint: str,
+) -> tuple[int | None, JSONResponse | None]:
+    """Аутентификация одного формата для всех /api/*: возвращает (user_id, ошибка).
 
-    Раньше fallback принимал user_id из тела запроса у любого клиента:
-    при открытом извне сервере (0.0.0.0) любой мог читать и писать
-    в чужие сессии, зная Telegram ID. Теперь fallback работает только
-    для локальных тестов; из Telegram всегда приходит подписанный initData.
+    1. init_data подписан верно -> идентификатор из Telegram.
+    2. init_data ПРИСУТСТВУЕТ, но подпись не сошлась -> 401 (подделка/битые данные).
+    3. init_data ПУСТОЙ (обычный браузер, вне Telegram) -> fallback: берём
+       user_id из запроса. Раньше это разрешалось только с localhost (C2),
+       теперь — с любого адреса, чтобы тестировать Mini App через Ngrok.
+       ВАЖНО: на публичном URL это значит «знать Telegram ID = войти под ним»;
+       держится это упрощение только на время отладки.
+    4. Нет ни initData, ни user_id -> 400.
     """
-    client = http_request.client
-    if client is None:
-        return False
-    return client.host in ("127.0.0.1", "::1")
+    tg_user = validate_init_data(init_data, BOT_TOKEN)
+    if tg_user:
+        return tg_user["id"], None  # подписанный контекст Telegram
+
+    if init_data:
+        print(f"[auth:{endpoint}] ОТКАЗ 401: initData есть, но подпись не сошла")
+        return None, JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    client = getattr(http_request, "client", None)
+    host = getattr(client, "host", "unknown")
+    if fallback_user_id:
+        print(f"[auth:{endpoint}] fallback: user_id={fallback_user_id} из запроса "
+              f"(init_data пустой, client={host})")
+        return fallback_user_id, None
+
+    print(f"[auth:{endpoint}] ОТКАЗ 400: нет ни init_data, ни user_id (client={host})")
+    return None, JSONResponse(
+        {"error": "Нужен init_data (из Telegram) или user_id (для тестов)"},
+        status_code=400,
+    )
 
 
 @app.get("/")
 async def index() -> FileResponse:
-    """Корневой адрес: отдаём HTML Mini App."""
-    return FileResponse(FRONTEND_DIR / "index.html", media_type="text/html")
+    """Корневой адрес: отдаём HTML Mini App.
+
+    Cache-Control: no-store — иначе Telegram-Web и браузеры кэшируют
+    старый index.html, и пользователи неделями тестируют устаревший
+    фронтенд (история с «дублирующимися пузырями»).
+    """
+    return FileResponse(
+        FRONTEND_DIR / "index.html",
+        media_type="text/html",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def _get_bot():
@@ -172,23 +272,10 @@ def _get_bot():
 async def send(request: SendRequest, http: Request) -> JSONResponse:
     """Переформулирует текст в "Я-сообщение" и сохраняет его в сессию."""
 
-    # 0. Аутентификация: проверяем подпись initData и извлекаем user_id
-    tg_user = validate_init_data(request.init_data, BOT_TOKEN)
-    if tg_user:
-        user_id = tg_user["id"]
-    elif request.init_data:
-        # initData передан, но подпись НЕ сошлась — подделка или битые данные
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    elif not _fallback_allowed(http):
-        # C2: initData пуст (нет подписанного контекста Telegram), но запрос
-        # НЕ локальный — браузерный fallback для тестов разрешён только
-        # с localhost, остальным Unauthorized
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    else:
-        # Fallback для тестов в обычном браузере на localhost.
-        # В ПРОДАКШЕНЕ ЭТОЙ ВЕТКИ НЕ БУДЕТ: сайт открывается только
-        # внутри Telegram и всегда присылает подписанный initData.
-        user_id = request.user_id
+    # 0. Аутентификация: подписанный initData (Telegram) или user_id (браузер)
+    user_id, auth_error = _resolve_user(request.init_data, request.user_id, http, "send")
+    if auth_error:
+        return auth_error
 
     if not user_id:
         return JSONResponse(
@@ -208,6 +295,14 @@ async def send(request: SendRequest, http: Request) -> JSONResponse:
     partner_id = await database.get_session_partner(session_id, user_id)
     if partner_id is None:
         return JSONResponse({"error": "Ожидаем партнера"}, status_code=400)
+
+    # 2.3 «Водопад»: сессия без ступени (создана раньше фичи или триггер
+    #     онбординга потерян) — запускаем Каскад 1 сами
+    try:
+        bot = _get_bot()
+        await therapy.ensure_started(session_id, bot)
+    except Exception as e:  # noqa: BLE001
+        print(f"[api] therapy.ensure_started не удался ({user_id}): {e!r}")
 
     # S7: серверный лимит длины — не отправляем в нейросеть, что и дорого,
     # и бессмысленно; фронтенде maxlength=1000, а боту Telegram даёт 4096.
@@ -271,7 +366,22 @@ async def send(request: SendRequest, http: Request) -> JSONResponse:
         # Логируем, но не ломаем ответ фронтенду
         print(f"[api] не удалось доставить переформулировку партнёру {partner_id}: {e!r}")
 
-    return JSONResponse({"rephrased": rephrased, "id": message_id})
+    # 6. «Водопад» (ЭФТ): ответ владельца ступени двигает сессию дальше.
+    #    Подсказки следующего ступени уйдут обоим через бота.
+    new_step = None
+    try:
+        bot = _get_bot()
+        new_step = await therapy.maybe_advance(session_id, user_id, bot)
+        if new_step is None:
+            current = await database.get_current_step(session_id)
+            print(f"[Waterfall] /api/send: ступень не изменилась "
+                  f"(текущая: {current})")
+        else:
+            print(f"[Waterfall] /api/send: ступень перешла в {new_step}")
+    except Exception as e:  # noqa: BLE001 — медиация важнее ступени
+        print(f"[api] therapy.maybe_advance не удался ({user_id}): {e!r}")
+
+    return JSONResponse({"rephrased": rephrased, "id": message_id, "step": new_step})
 
 
 class ExpandRequest(BaseModel):
@@ -291,22 +401,9 @@ async def expand(request: ExpandRequest, http: Request) -> JSONResponse:
     (чувство + потребность + конкретная просьба). Ответ видит только
     запросивший — в общий чат он не попадает.
     """
-    tg_user = validate_init_data(request.init_data, BOT_TOKEN)
-    if tg_user:
-        user_id = tg_user["id"]
-    elif request.init_data:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    elif not _fallback_allowed(http):
-        # C2: браузерный fallback только для localhost
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    else:
-        user_id = request.user_id
-
-    if not user_id:
-        return JSONResponse(
-            {"error": "Нужен init_data (из Telegram) или user_id (для тестов)"},
-            status_code=400,
-        )
+    user_id, auth_error = _resolve_user(request.init_data, request.user_id, http, "expand")
+    if auth_error:
+        return auth_error
 
     session_id = await database.get_user_session(user_id)
     if session_id is None:
@@ -358,6 +455,53 @@ class FinishRequest(BaseModel):
     init_data: str = ""
 
 
+class NextCascadeRequest(BaseModel):
+    """Тело запроса /api/next-cascade: кнопка «🌊 Дальше» в Mini App."""
+
+    user_id: int | None = None
+    init_data: str = ""
+
+
+@app.post("/api/next-cascade")
+async def next_cascade(request: NextCascadeRequest, http: Request) -> JSONResponse:
+    """Кнопка «🌊 Мы услышали друг друга. Дальше» на сайте (Озеро).
+
+    Ставит флаг is_ready_for_next нажавшему и пробует перейти дальше:
+    {"status": "advanced", "step": ...} если оба нажали, иначе
+    {"status": "waiting"}. Логика общая с callback'ом next_cascade бота —
+    у них один флаг в базе.
+    """
+    user_id, auth_error = _resolve_user(request.init_data, request.user_id, http, "next-cascade")
+    if auth_error:
+        return auth_error
+
+    session_id = await database.get_user_session(user_id)
+    if session_id is None:
+        return JSONResponse(
+            {"error": "Сессия не найдена. Начните заново командой /start"},
+            status_code=400,
+        )
+
+    step_now = await database.get_current_step(session_id)
+    if not therapy.is_lake(step_now):
+        # Кнопку показали из-за устаревшего состояния: честно сообщим
+        return JSONResponse({"status": "not_lake", "step": step_now}, status_code=409)
+
+    try:
+        await database.set_ready_for_next(user_id, True)
+        new_step = await therapy.try_advance_from_lake(session_id, _get_bot())
+    except Exception as e:  # noqa: BLE001 — H5
+        print(f"ERROR (next-cascade, {user_id}): {e!r}")
+        return JSONResponse(
+            {"error": "Техническая проблема, пожалуйста, повторите попытку через минуту"},
+            status_code=500,
+        )
+
+    if new_step is None:
+        return JSONResponse({"status": "waiting", "step": step_now})
+    return JSONResponse({"status": "advanced", "step": new_step})
+
+
 @app.post("/api/finish")
 async def finish(request: FinishRequest, http: Request) -> JSONResponse:
     """Завершает сессию из Mini App: сводит весь диалог в резюме через DeepSeek.
@@ -367,22 +511,9 @@ async def finish(request: FinishRequest, http: Request) -> JSONResponse:
     краткое резюме. После успеха сессия завершается и резюме уходит
     партнёру в Telegram (лучшая попытка).
     """
-    tg_user = validate_init_data(request.init_data, BOT_TOKEN)
-    if tg_user:
-        user_id = tg_user["id"]
-    elif request.init_data:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    elif not _fallback_allowed(http):
-        # C2: браузерный fallback только для localhost
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    else:
-        user_id = request.user_id
-
-    if not user_id:
-        return JSONResponse(
-            {"error": "Нужен init_data (из Telegram) или user_id (для тестов)"},
-            status_code=400,
-        )
+    user_id, auth_error = _resolve_user(request.init_data, request.user_id, http, "finish")
+    if auth_error:
+        return auth_error
 
     session_id = await database.get_user_session(user_id)
     if session_id is None:
@@ -500,18 +631,11 @@ async def get_history(
     0 или опущен — вся история сессии, N — только сообщения с id > N.
 
     Аутентификация как в /api/send: подпись initData (из Telegram)
-    или user_id (fallback только для localhost-тестов в браузере).
+    или user_id (fallback для обычного браузера, см. _resolve_user).
     """
-    tg_user = validate_init_data(init_data, BOT_TOKEN)
-    if tg_user:
-        uid = tg_user["id"]
-    elif init_data:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    elif not _fallback_allowed(http):
-        # C2: браузерный fallback только для localhost
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    else:
-        uid = user_id
+    uid, auth_error = _resolve_user(init_data, user_id, http, "history")
+    if auth_error:
+        return auth_error
 
     if not uid:
         return JSONResponse({"error": "Нужен init_data или user_id"}, status_code=400)
@@ -532,7 +656,16 @@ async def get_history(
     messages = await database.get_session_messages_for_api(
         session_id, after_id=max(0, after_id)
     )
-    return JSONResponse({"messages": messages, "profile_ready": profile_ready})
+    step = await database.get_current_step(session_id)
+    ready = bool(info and info.get("is_ready_for_next"))
+    return JSONResponse(
+        {
+            "messages": messages,
+            "profile_ready": profile_ready,
+            "step": step,
+            "ready": ready,
+        }
+    )
 
 
 @app.get("/healthz")
