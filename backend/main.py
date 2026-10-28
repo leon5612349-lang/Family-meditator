@@ -56,6 +56,11 @@ INVITE_PREFIX = "invite_"
 RATE_LIMIT_SECONDS = 2
 last_message_time: dict[int, float] = {}
 
+# «Расшифровка»: свой противодес-спам — глубокий разбор заметно дороже
+# обычного запроса; достаточно одного разбора в 5 сек на пользователя
+ANALYZE_COOLDOWN_SECONDS = 5
+analyze_last_time: dict[int, float] = {}
+
 # Username бота заполняется при запуске (для генерации ссылок-приглашений)
 bot_username = ""
 
@@ -534,7 +539,7 @@ async def rephrase_message_handler(message: Message) -> None:
     # DeepSeek, повторное сообщение уже отсчитывает новое окно
     last_message_time[user_id] = now
 
-    # Проверка безопасности: реальная угроза — не повод для медиации,
+    # Проверка безопасности: реальная угроза — не повод для диалога,
     # а повод остановиться. Такое сообщение не уходит партнёру.
     is_dangerous, reason = await llm.check_safety(text)
     if is_dangerous:
@@ -545,31 +550,17 @@ async def rephrase_message_handler(message: Message) -> None:
         await message.answer(llm.SAFETY_RESPONSE)
         return
 
-    # Онбординг-контекст: имена и пол обеих сторон — чтобы нейросеть не
-    # путала, кто есть кто. Профиль может отсутствовать (None) — llm сам
-    # соберёт промпт без пола.
-    sender_info = await database.get_user_info(user_id)
-    partner_info = await database.get_user_info(partner_id)
-
+    # «Водопад»: сессия без ступени (создана раньше фичи) — запускаем сами
     try:
-        rephrased = await llm.rephrase_text(
-            text,
-            sender_name=(sender_info or {}).get("name") or "пользователь",
-            sender_gender=(sender_info or {}).get("gender"),
-            partner_name=((partner_info or {}).get("name") or "партнёр"),
-            partner_gender=(partner_info or {}).get("gender"),
-            context=(sender_info or {}).get("about") or "",
-        )
-    except Exception:
-        # Любая ошибка API (сеть, неверный ключ, лимиты) не должна ронять бота
-        await message.answer("Извини, нейросеть сейчас недоступна")
-        return
+        await therapy.ensure_started(session_id, bot)
+    except Exception as e:  # noqa: BLE001
+        print(f"ERROR (therapy.ensure_started, {user_id}): {e!r}")
 
-    # Пара (оригинал + переформулировка) сохраняется в БД.
-    # H5: если база временно занята/недоступна — не молчим, а говорим
-    # пользователю; переформулировка в этом случае теряется.
+    # Живой диалог: текст партнёру уходит БЕЗ переформулирования.
+    # Оригинал сохраняется и в поле original, и в поле rephrased — так
+    # история Mini App (читает rephrased_text) показывает то же сообщение.
     try:
-        await database.add_message(session_id, user_id, text, rephrased)
+        await database.add_message(session_id, user_id, text, text)
     except Exception as e:  # noqa: BLE001
         print(f"ERROR (database.add_message, текст от {user_id}): {e!r}")
         await message.answer(
@@ -577,13 +568,33 @@ async def rephrase_message_handler(message: Message) -> None:
         )
         return
 
-    # Результат уходит собеседнику, а не отправителю
     try:
-        await bot.send_message(partner_id, rephrased)
+        await bot.send_message(partner_id, text)
     except Exception:
         await message.answer(
             "Партнёру не удалось доставить сообщение. Скорее всего, он заблокировал бота."
         )
+        return
+
+    # «Расшифровка»: получателю предлагаем глубокий разбор только что
+    # доставленного сообщения — кнопка уходит именно ЕМУ
+    try:
+        analyze_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="💡 Узнать, что партнер на самом деле хотел сказать",
+                    callback_data="analyze_message",
+                )
+            ]]
+        )
+        await bot.send_message(
+            partner_id,
+            "🤍 Это сообщение от вашего партнёра. Если оно прозвучало резко "
+            "или обидно — я могу расшифровать его выше.",
+            reply_markup=analyze_keyboard,
+        )
+    except Exception as e:  # noqa: BLE001 — кнопка не критична
+        print(f"ERROR (inline keyboard, расшифровка {partner_id}): {e!r}")
 
     # «Раскрыть подробнее»: короткие сообщения не всегда говорят всё.
     # Следом за доставкой отправляем отправителю маленькую подсказку
@@ -752,6 +763,62 @@ async def next_cascade_handler(callback: CallbackQuery) -> None:
         await callback.answer(note, show_alert=False)
     except Exception:  # noqa: BLE001
         pass
+
+
+@dp.callback_query(F.data == "analyze_message")
+async def analyze_message_handler(callback: CallbackQuery) -> None:
+    """Кнопка «Узнать, что партнер на самом деле хотел сказать».
+
+    Нажимает ПОЛУЧАТЕЛЬ-message (тот, кому переслали текст): берём
+    последнее сообщение ЕГО ПАРТНЁРА в сессии, просим DeepSeek разобрать
+    его по плану ЭФТ (факты / эмоции и маски / уязвимость / здоровый
+    вариант) и отправляем разбор нажавшему обычным текстом — переносы
+    строк сохраняются, структура читается.
+    """
+    user_id = callback.from_user.id
+
+    try:
+        await callback.answer()
+    except Exception:  # noqa: BLE001
+        pass
+
+    session_id = await database.get_user_session(user_id)
+    if session_id is None:
+        await callback.message.answer("Нажмите /start, чтобы создать сессию")
+        return
+
+    partner_id = await database.get_session_partner(session_id, user_id)
+    if partner_id is None:
+        await callback.message.answer("В сессии пока нет партнера")
+        return
+
+    last = await database.get_last_message_by_sender(session_id, partner_id)
+    if last is None:
+        await callback.message.answer(
+            "Пока нечего расшифровывать — партнёр ещё ничего не написал"
+        )
+        return
+    _, original_text, _ = last
+
+    # Свой троттлинг на расшифровки — чтобы не долбить нейросеть кнопкой
+    now = time.monotonic()
+    last_ts = analyze_last_time.get(user_id)
+    if last_ts is not None and now - last_ts < ANALYZE_COOLDOWN_SECONDS:
+        await callback.message.answer("Пожалуйста, не так быстро. Подождите пару секунд")
+        return
+    analyze_last_time[user_id] = now
+
+    try:
+        await callback.message.answer("Загружаю глубокий разбор... 🧠")
+        analysis = await llm.analyze_partner_message(original_text)
+    except Exception as e:  # noqa: BLE001 — H2
+        print(f"ERROR (DeepSeek, расшифровка {user_id}): {e!r}")
+        await callback.message.answer("Извини, нейросеть сейчас недоступна")
+        return
+
+    await callback.message.answer(
+        f"🧠 Расшифровка\n\n{analysis.replace('**', '')}"
+    )
 
 
 @dp.callback_query(F.data == "expand_context")

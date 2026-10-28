@@ -331,40 +331,27 @@ async def send(request: SendRequest, http: Request) -> JSONResponse:
         print(f"[api] сообщение от {user_id} заблокировано проверкой безопасности: {reason}")
         return JSONResponse({"blocked": True, "message": llm.SAFETY_RESPONSE})
 
-    # 3. Переформулировка через DeepSeek
-    # Онбординг-контекст: имена и пол обеих сторон из БД — чтобы нейросеть
-    # не путала, кто есть кто. Профиль может отсутствовать (None) — llm сам
-    # соберёт промпт без пола.
-    sender_info = await database.get_user_info(user_id)
-    partner_info = await database.get_user_info(partner_id)
+    # 3. Живой диалог: RAW-текст сохраняется и передаётся партнёру БЕЗ
+    # переформулирования. Оригинал пишем и в поле rephrased_text — история
+    # Mini App (она читает rephrased_text) покажет то же сообщение.
     try:
-        rephrased = await llm.rephrase_text(
-            request.text,
-            sender_name=(sender_info or {}).get("name") or "пользователь",
-            sender_gender=(sender_info or {}).get("gender"),
-            partner_name=((partner_info or {}).get("name") or "партнёр"),
-            partner_gender=(partner_info or {}).get("gender"),
-            context=(sender_info or {}).get("about") or "",
+        message_id = await database.add_message(
+            session_id, user_id, request.text, request.text
         )
     except Exception as e:
-        # H2: клиенту — человекопонятная фикс-строка, детали остаются в консоли
-        print(f"ERROR (DeepSeek, /api/send): {e!r}")
+        print(f"ERROR (database.add_message, /api/send {user_id}): {e!r}")
         return JSONResponse(
-            {"error": "Извини, нейросеть сейчас недоступна"}, status_code=500
+            {"error": "Техническая проблема, пожалуйста, повторите попытку через минуту"},
+            status_code=500,
         )
 
-    # 4. Пара (оригинал + переформулировка) в общую историю сессии.
-    #    Возвращаем id записи: фронтенд пометит её как уже показанную
-    #    и не нарисует второй раз, когда придёт из опроса /api/history.
-    message_id = await database.add_message(session_id, user_id, request.text, rephrased)
-
-    # 5. Отправляем переформулировку партнёру в Telegram
+    # 4. Отправляем сырой текст партнёру в Telegram
     try:
         bot = _get_bot()
-        await bot.send_message(chat_id=partner_id, text=rephrased)
+        await bot.send_message(chat_id=partner_id, text=request.text)
     except Exception as e:  # noqa: BLE001 — например, партнёр заблокировал бота
         # Логируем, но не ломаем ответ фронтенду
-        print(f"[api] не удалось доставить переформулировку партнёру {partner_id}: {e!r}")
+        print(f"[api] не удалось доставить сообщение партнёру {partner_id}: {e!r}")
 
     # 6. «Водопад» (ЭФТ): ответ владельца ступени двигает сессию дальше.
     #    Подсказки следующего ступени уйдут обоим через бота.
@@ -381,7 +368,77 @@ async def send(request: SendRequest, http: Request) -> JSONResponse:
     except Exception as e:  # noqa: BLE001 — медиация важнее ступени
         print(f"[api] therapy.maybe_advance не удался ({user_id}): {e!r}")
 
-    return JSONResponse({"rephrased": rephrased, "id": message_id, "step": new_step})
+    # rephrased == оригинал: фронтенд рисует один пузырь без дублей
+    return JSONResponse({"rephrased": request.text, "id": message_id, "step": new_step})
+
+
+class AnalyzeRequest(BaseModel):
+    """Тело запроса /api/analyze: расшифровка КОНКРЕТНОГО сообщения партнёра."""
+
+    user_id: int | None = None
+    init_data: str = ""
+    message_id: int | None = None
+
+
+analyze_last_time: dict[int, float] = {}
+ANALYZE_COOLDOWN_SECONDS = 5
+
+
+@app.post("/api/analyze")
+async def analyze(request: AnalyzeRequest, http: Request) -> JSONResponse:
+    """Глубокий разбор («Расшифровка») сообщения партнёра по плану ЭФТ.
+
+    Пользователь нажимает «💡 Расшифровать» под входящим пузырём:
+    берём СЫРОЙ текст именно этого сообщения (по message_id), пропускаем
+    через analyze_partner_message и возвращаем структурированный разбор
+    (факты / эмоции и маски / уязвимость / Я-сообщение). Разбор видит
+    только запросивший — партнёру в Telegram он не уходит.
+    """
+    user_id, auth_error = _resolve_user(request.init_data, request.user_id, http, "analyze")
+    if auth_error:
+        return auth_error
+
+    if request.message_id is None:
+        return JSONResponse({"error": "Нужен message_id"}, status_code=400)
+
+    session_id = await database.get_user_session(user_id)
+    if session_id is None:
+        return JSONResponse(
+            {"error": "Сначала запустите бота и создайте сессию"},
+            status_code=400,
+        )
+
+    msg = await database.get_message_by_id(session_id, request.message_id)
+    if msg is None:
+        return JSONResponse(
+            {"error": "Сообщение не найдено в этой сессии"}, status_code=404
+        )
+    sender_id, original_text = msg
+    if sender_id == user_id:
+        return JSONResponse(
+            {"error": "Это ваше же сообщение — расшифровать можно только сообщения партнёра"},
+            status_code=400,
+        )
+
+    # Троттлинг: разбор заметно дороже обычного запроса
+    now = time.monotonic()
+    last_ts = analyze_last_time.get(user_id)
+    if last_ts is not None and now - last_ts < ANALYZE_COOLDOWN_SECONDS:
+        return JSONResponse(
+            {"error": "Пожалуйста, не так быстро. Подождите пару секунд"},
+            status_code=429,
+        )
+    analyze_last_time[user_id] = now
+
+    try:
+        analysis = await llm.analyze_partner_message(original_text)
+    except Exception as e:  # noqa: BLE001 — H2: деталь в консоли
+        print(f"ERROR (DeepSeek, /api/analyze {user_id}): {e!r}")
+        return JSONResponse(
+            {"error": "Извини, нейросеть сейчас недоступна"}, status_code=500
+        )
+
+    return JSONResponse({"analysis": analysis})
 
 
 class ExpandRequest(BaseModel):
@@ -646,7 +703,15 @@ async def get_history(
         # поэтому строгое сообщение об ошибке спамило бы чат UI)...
         info = await database.get_user_info(uid)
         profile_ready = bool(info and info.get("gender"))
-        return JSONResponse({"messages": [], "profile_ready": profile_ready})
+        return JSONResponse(
+            {
+                "messages": [],
+                "profile_ready": profile_ready,
+                "step": None,
+                "step_text": None,
+                "ready": False,
+            }
+        )
 
     # Онбординг: фронт показывает приветственный экран, пока профиль
     # не заполнен (пол — обязательный ответ анкеты)
@@ -657,12 +722,16 @@ async def get_history(
         session_id, after_id=max(0, after_id)
     )
     step = await database.get_current_step(session_id)
+    # «Водопад»: текст текущей ступени (вопрос/озеро) — Mini App рисует его
+    # как карточку в чате, чтобы вопросы бота были видны и на сайте
+    step_text = (await therapy.prompt_text_for(step, session_id)) if step else None
     ready = bool(info and info.get("is_ready_for_next"))
     return JSONResponse(
         {
             "messages": messages,
             "profile_ready": profile_ready,
             "step": step,
+            "step_text": step_text,
             "ready": ready,
         }
     )

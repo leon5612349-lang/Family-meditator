@@ -35,9 +35,9 @@ CASCADE_2_A = (
 CASCADE_2_B = "А что чувствуете вы, когда партнер говорит о своей уязвимости?"
 CASCADE_2_LAKE = (
     "Вы заговорили о самом глубоком. Здесь особенно легко занять оборону — "
-    "и особенно ценно её не занимать. Поговорите о том, что вас тронуло. "
-    "Правила те же: медиатор мягко переформулирует ваши слова. "
-    "Когда почувствуете, что вас услышали, нажмите кнопку ниже."
+    "и особенно ценно её не занимать. Говорите прямо и бережно, "
+    "без оскорблений. Когда почувствуете, что вас услышали, "
+    "нажмите кнопку ниже."
 )
 CASCADE_3_INTEGRATION = (
     "Теперь, когда вы знаете истинные чувства друг друга, "
@@ -60,8 +60,25 @@ _AFTER_LAKE = {
     "CASCADE_2_LAKE": "CASCADE_3_INTEGRATION",
 }
 
-LAKE_BUTTON_TEXT = "🌊 Мы услышали друг друга. Дальше"
+LAKE_BUTTON_TEXT = "🌊 Мы услышали друг другу. Дальше"
 LAKE_CALLBACK = "next_cascade"
+
+# Человеческие названия ступеней (для пользователей). Технические ключи
+# (CASCADE_x_A и т.д.) менять нельзя — на них завязаны машина состояний,
+# база и префиксы _A/_B/LAKE; меняются только вывески.
+DISPLAY_LABELS = {
+    "CASCADE_1_A": "🌿 Шаг 1. Что я чувствую",
+    "CASCADE_1_B": "🌿 Шаг 1 — отклик. Я слышу, что ты чувствуешь",
+    "CASCADE_1_LAKE": "🌿 Шаг 2. Учимся слышать",
+    "CASCADE_2_A": "🌿 Шаг 3. Наши истинные страхи и потребности",
+    "CASCADE_2_B": "🌿 Шаг 3 — отклик. Рядом с тобой не страшно",
+    "CASCADE_2_LAKE": "🌿 Шаг 4. Взгляд друг на друга без доспехов",
+    "CASCADE_3_INTEGRATION": "🌿 Шаг 5. Наши решения",
+}
+
+
+def display_label(step: str | None) -> str:
+    return DISPLAY_LABELS.get(step, "🌿 Наша сессия")
 
 
 def next_after_owner_answer(step: str) -> str | None:
@@ -91,21 +108,19 @@ async def _topic(session_id: int) -> str:
 
 
 async def prompt_text_for(step: str, session_id: int) -> str:
-    """Готовый текст подсказки: номер каскада + текст ступени EFT."""
+    """Готовый текст подсказки: человеческое название + текст ступени EFT."""
     topic = await _topic(session_id)
-    labels = {
-        "CASCADE_1_A": ("🌊 Каскад 1 — Ступень A. Вопрос вам:", CASCADE_1_A.replace("[проблема]", topic)),
-        "CASCADE_1_B": ("🌊 Каскад 1 — Ступень B. Вопрос вам:", CASCADE_1_B),
-        "CASCADE_1_LAKE": ("🌊 Каскад 1 — Озеро", CASCADE_1_LAKE),
-        "CASCADE_2_A": ("🌊 Каскад 2 — Ступень A. Вопрос вам:", CASCADE_2_A.replace("[проблема]", topic)),
-        "CASCADE_2_B": ("🌊 Каскад 2 — Ступень B. Вопрос вам:", CASCADE_2_B),
-        "CASCADE_2_LAKE": ("🌊 Каскад 2 — Озеро", CASCADE_2_LAKE),
-        "CASCADE_3_INTEGRATION": (
-            "🌊 Каскад 3 — Интеграция. Финальный вопрос обоим:",
-            CASCADE_3_INTEGRATION.replace("[проблема]", topic),
-        ),
+    bodies = {
+        "CASCADE_1_A": CASCADE_1_A.replace("[проблема]", topic),
+        "CASCADE_1_B": CASCADE_1_B,
+        "CASCADE_1_LAKE": CASCADE_1_LAKE,
+        "CASCADE_2_A": CASCADE_2_A.replace("[проблема]", topic),
+        "CASCADE_2_B": CASCADE_2_B,
+        "CASCADE_2_LAKE": CASCADE_2_LAKE,
+        "CASCADE_3_INTEGRATION": CASCADE_3_INTEGRATION.replace("[проблема]", topic),
     }
-    label, body = labels.get(step, ("🌊 Сессия", "Продолжайте."))
+    label = display_label(step)
+    body = bodies.get(step, "Продолжайте.")
     return f"{label}\n\n{body}"
 
 
@@ -203,11 +218,12 @@ async def ensure_started(session_id: int, bot) -> str | None:
 
 
 async def maybe_advance(session_id: int, sender_id: int, bot) -> str | None:
-    """Движение по ступеням после записанного сообщения.
+    """Движение по ступеням после полученного сообщения.
 
-    Ступень A двигается ответом партнёра 1 (создателя), ступень B —
-    ответом партнёра 2. Сообщения «не владельца» просто медиаторятся
-    и ступень не сдвигают. Возвращает новую ступень или None.
+    Реагируем на сам ФАКТ ответа (не на содержание): диалог теперь живой,
+    переформулирования нет. Ступень A двигается сообщением партнёра 1
+    (создателя), ступень B — сообщением партнёра 2. Сообщения «не
+    владельца» ступень не сдвигают. Возвращает новую ступень или None.
     """
     import database  # flat-import стиль проекта
 

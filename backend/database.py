@@ -321,6 +321,27 @@ async def get_last_message_by_sender(
         return (row[0], row[1], row[2]) if row else None
 
 
+async def get_message_by_id(
+    session_id: int, message_id: int
+) -> tuple[int, str] | None:
+    """Одно сообщение сессии: (sender_id, original_text) или None.
+
+    Нужно «Расшифровке»: пользователь выбирает конкретное сообщение
+    партнёра (кнопкой под пузырём), сервер берёт исходный (сырой) текст.
+    """
+    async with _connect() as conn:
+        cursor = await conn.execute(
+            """
+            SELECT sender_id, original_text
+            FROM messages
+            WHERE session_id = ? AND id = ?
+            """,
+            (session_id, message_id),
+        )
+        row = await cursor.fetchone()
+        return (row[0], row[1]) if row else None
+
+
 async def get_session_messages_for_api(
     session_id: int, after_id: int = 0
 ) -> list[dict]:

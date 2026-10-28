@@ -341,6 +341,27 @@
         .send-btn:active  { transform: scale(0.92); }
         .send-btn:disabled { opacity: 0.4; }
 
+        /* ── «Водопад»: мягкая карточка текущей ступени ───────── */
+
+        .step-bar {
+            padding: 6px 14px 0;
+            flex-shrink: 0;
+        }
+
+        .step-card {
+            background: var(--accent-soft);
+            border: 1.5px solid var(--accent-deep);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            font-family: var(--font-body);
+            font-size: 13.5px;
+            line-height: 1.55;
+            color: var(--text);
+            text-align: center;
+            font-weight: 600;
+            white-space: pre-line;   /* подпись шага отдельно от текста (¶) */
+        }
+
         /* ── «Водопад»: кнопка перехода на Озере ──────────────── */
 
         .lake-bar {
@@ -587,6 +608,49 @@
         }
         .advice-chip:active { transform: scale(0.97); }
         .advice-chip:disabled { opacity: 0.45; cursor: default; }
+
+        /* ── «Расшифровка»: чип под входящим пузырём и карточка разбора ── */
+        .analyze-chip {
+            align-self: flex-start;   /* у входящего пузыря, слева */
+            margin-top: -2px;
+            margin-left: 10px;
+            padding: 5px 12px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: var(--surface);
+            color: var(--text-muted);
+            font-family: var(--font-body);
+            font-size: 11.5px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: var(--shadow);
+            transition: transform 0.15s ease, opacity 0.15s ease;
+        }
+        .analyze-chip:active { transform: scale(0.97); }
+        .analyze-chip:disabled { opacity: 0.45; cursor: default; }
+
+        .analysis-card {
+            align-self: stretch;
+            margin: 4px 0 10px;
+            background: var(--sage-soft);
+            border: 1.5px solid var(--sage);
+            border-radius: var(--radius);
+            padding: 13px 16px;
+            font-family: var(--font-body);
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--text);
+            white-space: pre-line;   /* структура разбора с переносами */
+        }
+        .analysis-card .label {
+            display: block;
+            font-family: var(--font-title);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            color: var(--sage-deep);
+            margin-bottom: 6px;
+        }
     </style>
 </head>
 <body>
@@ -604,7 +668,7 @@
     <main class="chat" id="chat">
         <div class="system-message">
             Здесь всё хорошо, что правда. Напишите, что чувствуете —
-            нейросеть мягко переформулирует это, и партнёр увидит 🤍
+            партнёр получит это как есть, бот лишь направляет вас 🤍
         </div>
         <div class="typing" id="typing" hidden>
             <span></span><span></span><span></span>
@@ -741,6 +805,13 @@
         </div>
     </main>
 
+    <!-- «Водопад»: карточка текущей ступени (вопрос/озеро) — мягкая плашка
+         над полем ввода. При переходе на новый шаг текст заменяется,
+         без сессии плашка прячется -->
+    <div class="step-bar" id="stepBar" hidden>
+        <div class="step-card" id="stepCard"></div>
+    </div>
+
     <!-- Поле ввода -->
     <form class="input-bar" id="sendForm">
         <input class="input" id="messageInput"
@@ -823,6 +894,64 @@
             // Чип-кнопка всегда переезжает в самый низ — под последнее сообщение
             if (!adviceChip) adviceChip = createAdviceChip();
             chat.insertBefore(adviceChip, typing);
+            return el;
+        }
+
+        // ── «Расшифровка»: чип под входящим сообщением и карточка разбора ──
+        const analyzedChips = new Set();  // message_id → чип уже создан
+
+        function attachAnalyzeChip(bubble, messageId) {
+            // Чип «💡 Расшифровать» под входящим (серым) пузырём партнёра.
+            // Клик POST /api/analyze — разбор видит только запросивший.
+            if (analyzedChips.has(messageId)) return;
+            analyzedChips.add(messageId);
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "analyze-chip";
+            chip.textContent = "💡 Расшифровать";
+            chip.addEventListener("click", async () => {
+                chip.disabled = true;
+                const initData = (tg && tg.initData) || "";
+                const payload = initData
+                    ? { init_data: initData, message_id: messageId }
+                    : { user_id: getCurrentUserId(), message_id: messageId };
+
+                try {
+                    const res = await fetch("/api/analyze", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await res.json();
+                    if (data.analysis) {
+                        // DeepSeek любит раздавать Markdown — в plain-text
+                        // чате жирность DEAD звёздочками не нужна
+                        addAnalysis(data.analysis.replace(/\*\*/g, ""));
+                    } else {
+                        addMessage(data.error || "Не удалось расшифровать", "out", "Ошибка");
+                    }
+                } catch (err) {
+                    addMessage("Нет связи с сервером: " + err, "out", "Ошибка");
+                } finally {
+                    chat.scrollTop = chat.scrollHeight;
+                }
+            });
+            bubble.after(chip);
+        }
+
+        // Карточка разбора: с иконкой психолога, с переносами строк,
+        // видит только запросивший — партнёру она не уходит
+        function addAnalysis(text) {
+            hideWelcome(false);
+            const el = document.createElement("div");
+            el.className = "analysis-card";
+            const l = document.createElement("span");
+            l.className = "label";
+            l.textContent = "🧠 Расшифровка: что на самом деле хотел сказать партнёр";
+            el.appendChild(l);
+            el.appendChild(document.createTextNode(text));
+            chat.insertBefore(el, typing);
+            if (adviceChip) chat.insertBefore(adviceChip, typing);
         }
 
         // Финальная карточка резюме сессии (по кнопке «Завершить сессию»)
@@ -872,6 +1001,23 @@
         let firstHistoryChecked = false;  // первая проверка истории при загрузке
         // «Водопад»: поле готовности текущего пользователя (кнопка «Дальше»)
         let currentReadyFlag = false;
+        let lastStepText = null;   // текст карточки текущей ступени
+
+        function renderStepCard(stepText) {
+            const card = document.getElementById("stepCard");
+            const bar = document.getElementById("stepBar");
+            if (!stepText) {
+                bar.hidden = true;
+                card.textContent = "";
+                lastStepText = null;
+                return;
+            }
+            if (stepText === lastStepText) return;  // без мерцания
+            lastStepText = stepText;
+            card.textContent = stepText;
+            bar.hidden = false;
+            chat.scrollTop = chat.scrollHeight;
+        }
 
         function hideWelcome(instant) {
             if (welcomeGone) return;
@@ -1044,11 +1190,15 @@
                 if (currentStep !== stepBefore) {
                     applyStepState();
                 }
+                // вопросы бота видны и в Mini App: карточка текущей ступени
+                renderStepCard(data.step_text || null);
                 // Первый проход при загрузке: если история уже есть в базе,
                 // экран скрывается СРАЗУ (без анимации), не дожидаясь отрисовки
                 if (!firstHistoryChecked) {
                     firstHistoryChecked = true;
-                    if ((data.messages || []).length > 0) {
+                    // история есть ИЛИ идёт «Водопад» (вопросы ступеней) —
+                    // ламповый экран не нужен: он перекрывает чат и карточку
+                    if ((data.messages || []).length > 0 || data.step) {
                         hideWelcome(true);
                     }
                 }
@@ -1058,14 +1208,16 @@
                     if (msg.id <= maxHistoryId || knownIds.has(msg.id)) continue;
                     knownIds.add(msg.id);
                     if (msg.id > maxHistoryId) maxHistoryId = msg.id;
-                    // Цвет по отправителю: мои переформулировки — синие,
-                    // партнёрские — серые входящие
+                    // Живой диалог: пузыри содержат сырой текст.
+                    // Свои сообщения — «Вы», партнёрские — «От партнёра»
                     const mine = msg.sender_id === getCurrentUserId();
-                    addMessage(
+                    const bubble = addMessage(
                         msg.rephrased,
                         mine ? "out" : "in",
-                        "Переформулировано нейросетью"
+                        mine ? "Вы" : "От партнёра"
                     );
+                    // Под входящим сообщением — чип «💡 Расшифровать»
+                    if (!mine) attachAnalyzeChip(bubble, msg.id);
                     hasNew = true;
                 }
                 if (hasNew) {
@@ -1088,10 +1240,9 @@
             const input = document.getElementById("messageInput");
             const text = input.value.trim();
             if (!text) return;
-            addMessage(text, "in", "Вы: до переформулировки");
             input.value = "";
 
-            // Пока ждём ответ нейросети — показываем «печатает...»
+            // Пока идёт проверка безопасности — показываем «печатает...»
             typing.hidden = false;
             chat.scrollTop = chat.scrollHeight;
 
@@ -1099,7 +1250,6 @@
                 // Внутри Telegram шлём initData (подписанную Telegram строку) —
                 // backend проверит подпись HMAC-SHA256 и сам извлечёт user_id.
                 // initData пуст ТОЛЬКО в обычном браузере → fallback на TEST_USER_ID.
-                // В продакшене fallback-ветки не будет: сайт всегда открывается из Telegram.
                 const initData = (tg && tg.initData) || "";
                 const payload = initData
                     ? { init_data: initData }
@@ -1108,22 +1258,22 @@
                 const res = await fetch("/api/send", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify({...payload, text: text}),
                 });
                 const data = await res.json();
                 if (data.blocked) {
-                    // Проверка безопасности: реальная угроза — сервер не
-                    // переформулировал и не переслал сообщение партнёру.
-                    // Рисуем жёсткий ответ отдельной "системной" карточкой.
+                    // Система безопасности: сообщение не отправлено партнёру —
+                    // рисуем только жёсткий ответ сервера
                     addMessage(data.message, "in", "Система безопасности");
                 } else if (data.rephrased) {
-                    // backend вернул id записи — помечаем как показанное,
-                    // иначе опрос /api/history добавит его ещё раз
+                    // Живой диалог: пузырь ровно один — свой сырой текст.
+                    // id помечаем как показанное, чтобы /api/history не
+                    // отрисовал его второй раз
                     if (typeof data.id === "number") {
                         knownIds.add(data.id);
                         if (data.id > maxHistoryId) maxHistoryId = data.id;
                     }
-                    addMessage(data.rephrased, "out", "Переформулировано нейросетью");
+                    addMessage(data.rephrased, "out", "Вы");
                 } else {
                     addMessage(
                         data.error || "Неизвестная ошибка сервера",
