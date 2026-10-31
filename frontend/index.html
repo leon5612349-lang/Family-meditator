@@ -1311,10 +1311,13 @@
                     addSummary(data.summary);
                     // Сессия в базе завершена — останавливаем опрос истории
                     clearInterval(historyTimer);
-                    // чип и кнопка «Дальше» больше не имеют смысла
+                    // карточка шага, кнопка «Дальше», чипы и флаги не имеют смысла
                     currentStep = null;
                     currentReadyFlag = false;
                     applyStepState();
+                    renderStepCard(null);
+                    analyzedChips.clear();
+                    chat.querySelectorAll(".analyze-chip, .analysis-card").forEach(el => el.remove());
                     // Чип «Попросить совета» больше не имеет смысла:
                     // сессия и её сообщения удалены
                     if (adviceChip) {
@@ -1329,6 +1332,10 @@
                     clearInterval(historyTimer);
                     currentStep = null;
                     currentReadyFlag = false;
+                    applyStepState();
+                    renderStepCard(null);
+                    analyzedChips.clear();
+                    chat.querySelectorAll(".bubble, .summary, .analyze-chip, .analysis-card").forEach(el => el.remove());
                     chat.querySelectorAll(".bubble, .summary").forEach(el => el.remove());
                     knownIds.clear();
                     maxHistoryId = 0;

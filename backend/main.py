@@ -742,6 +742,23 @@ async def next_cascade_handler(callback: CallbackQuery) -> None:
             pass
         return
 
+    # Сначала убеждаемся, что мы на Озере. Старые сообщения previous
+    # Озёр остаются в чате с кнопками: до проверки флаг ставить нельзя,
+    # иначе «утёкший» нажатый флаг подтолкнёт СЛЕДУЮЩЕЕ озеро к переходу
+    # без согласия партнёра (баг, ауд-1.11.2026).
+    step_now = await database.get_current_step(session_id)
+    if not therapy.is_lake(step_now):
+        note = (
+            "Это финальная ступень — завершите сессию командой /finish"
+            if therapy.is_finished(step_now)
+            else "Сейчас не Озеро: сначала пройдите текущую ступень"
+        )
+        try:
+            await callback.answer(note, show_alert=False)
+        except Exception:  # noqa: BLE001
+            pass
+        return
+
     await database.set_ready_for_next(user_id, True)
 
     new_step = await therapy.try_advance_from_lake(session_id, bot)
@@ -753,14 +770,8 @@ async def next_cascade_handler(callback: CallbackQuery) -> None:
         return
 
     # Партнёр ещё не нажал: "" ждём ("... "")
-    step_now = await database.get_current_step(session_id)
-    note = (
-        "Ждем партнера..."
-        if not therapy.is_finished(step_now)
-        else "Это финальная ступень — завершите сессию командой /finish"
-    )
     try:
-        await callback.answer(note, show_alert=False)
+        await callback.answer("Ждем партнера...", show_alert=False)
     except Exception:  # noqa: BLE001
         pass
 
@@ -868,7 +879,8 @@ async def expand_context_handler(callback: CallbackQuery) -> None:
     try:
         advice = await llm.expand_text(
             original_text,
-            rephrased_text=rephrased_text or "",
+            # rephrased_text хранит тот же сырой текст — не дублируем
+            rephrased_text="",
             context=(sender_info or {}).get("about") or "",
         )
     except Exception:

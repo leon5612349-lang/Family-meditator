@@ -492,7 +492,8 @@ async def expand(request: ExpandRequest, http: Request) -> JSONResponse:
     try:
         advice = await llm.expand_text(
             original_text,
-            rephrased_text=rephrased_text or "",
+            # rephrased_text теперь хранит тот же сырой текст — не дублируем
+            rephrased_text="",
             context=(sender_info or {}).get("about") or "",
         )
     except Exception as e:
