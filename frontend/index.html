@@ -341,6 +341,37 @@
         .send-btn:active  { transform: scale(0.92); }
         .send-btn:disabled { opacity: 0.4; }
 
+        /* Кнопка микрофона: в стиле отправки, при записи — красная пульсация */
+        .mic-btn {
+            width: 44px;
+            height: 44px;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            background: var(--surface);
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: transform 0.15s ease, background-color 0.2s ease,
+                        color 0.2s ease;
+        }
+        .mic-btn svg { width: 18px; height: 18px; display: block; }
+        .mic-btn:active { transform: scale(0.92); }
+        .mic-btn.recording {
+            background: #C85B5B;
+            color: #FFFFFF;
+            border-color: #B54B4B;
+            animation: micPulse 1.4s ease-in-out infinite;
+        }
+        .mic-btn:disabled { opacity: 0.4; cursor: default; }
+
+        @keyframes micPulse {
+            0%, 100% { transform: scale(1); }
+            50%      { transform: scale(1.08); }
+        }
+
         /* ── «Водопад»: мягкая карточка текущей ступени ───────── */
 
         .step-bar {
@@ -817,6 +848,14 @@
         <input class="input" id="messageInput"
                type="text" placeholder="Напишите, что чувствуете..."
                autocomplete="off" maxlength="1000">
+        <button class="mic-btn" id="micBtn" type="button" title="Голосовое сообщение">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="2" width="6" height="12" rx="3"/>
+                <path d="M5 10v1a7 7 0 0 0 14 0v-1"/>
+                <path d="M12 18v4"/>
+            </svg>
+        </button>
         <button class="send-btn" type="submit" id="sendBtn" title="Отправить">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1287,6 +1326,103 @@
                 typing.hidden = true;
                 chat.scrollTop = chat.scrollHeight;
             }
+        });
+
+        // ── Голосовой ввод: MediaRecorder → POST /api/send_voice ────────
+        // Клик → запись (кнопка красная, «слушаю...»), клик ещё раз →
+        // остановка и отправка. Ответ сервера приходит с пометкой
+        // «🎤 (Голосовое сообщение)» — рисуем его как обычный пузырь «Вы».
+        let mediaRecorder = null;
+        let voiceChunks = [];
+        let voiceStream = null;
+
+        function showTyping(label) {
+            // Индикатор «печатает/слушаю»: dots + Подпись в поле ввода
+            typing.hidden = false;
+            document.getElementById("messageInput").placeholder = label;
+            chat.scrollTop = chat.scrollHeight;
+        }
+        function resetTypingLabel() {
+            typing.hidden = true;
+            document.getElementById("messageInput").placeholder =
+                "Напишите, что чувствуете...";
+        }
+
+        document.getElementById("micBtn").addEventListener("click", async () => {
+            const btn = document.getElementById("micBtn");
+
+            // Повторный клик во время записи — останавливаем и отправляем
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                return;
+            }
+
+            try {
+                voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (err) {
+                addMessage("Доступ к микрофону не получен: разрешите запись в настройках", "out", "Ошибка");
+                return;
+            }
+
+            voiceChunks = [];
+            try {
+                mediaRecorder = new MediaRecorder(voiceStream);
+            } catch (err) {
+                voiceStream.getTracks().forEach(t => t.stop());
+                addMessage("Запись речи не поддерживается в этом браузере", "out", "Ошибка");
+                return;
+            }
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) voiceChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                btn.classList.remove("recording");
+                btn.disabled = true;
+                if (voiceStream) {
+                    voiceStream.getTracks().forEach(t => t.stop());
+                    voiceStream = null;
+                }
+                showTyping("Распознаю голос...");
+
+                try {
+                    const blob = new Blob(voiceChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+                    if (blob.size < 1024) {
+                        addMessage("Запись слишком короткая — нажми микрофон и говори подольше", "out", "Ошибка");
+                        return;
+                    }
+                    const initData = (tg && tg.initData) || "";
+                    const form = new FormData();
+                    form.append("file", blob, "voice.webm");
+                    if (initData) form.append("init_data", initData);
+                    else form.append("user_id", String(getCurrentUserId()));
+
+                    const res = await fetch("/api/send_voice", { method: "POST", body: form });
+                    const data = await res.json();
+                    if (data.blocked) {
+                        addMessage(data.message, "in", "Система безопасности");
+                    } else if (data.rephrased) {
+                        if (typeof data.id === "number") {
+                            knownIds.add(data.id);
+                            if (data.id > maxHistoryId) maxHistoryId = data.id;
+                        }
+                        addMessage(data.rephrased, "out", "Вы 🎤");
+                    } else {
+                        addMessage(data.error || "Не удалось отправить голосовое", "out", "Ошибка");
+                    }
+                } catch (err) {
+                    addMessage("Нет связи с сервером: " + err, "out", "Ошибка");
+                } finally {
+                    resetTypingLabel();
+                    btn.disabled = false;
+                    chat.scrollTop = chat.scrollHeight;
+                }
+            };
+
+            mediaRecorder.start();
+            btn.classList.add("recording");
+            showTyping("Слушаю... нажми кнопку ещё раз");
         });
 
         // ── Завершение сессии: POST /api/finish → резюме от DeepSeek ────

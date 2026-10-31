@@ -13,6 +13,7 @@ import hmac
 import json
 import os
 import sys
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -31,7 +32,7 @@ import llm
 import therapy
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -370,6 +371,140 @@ async def send(request: SendRequest, http: Request) -> JSONResponse:
 
     # rephrased == оригинал: фронтенд рисует один пузырь без дублей
     return JSONResponse({"rephrased": request.text, "id": message_id, "step": new_step})
+
+
+@app.post("/api/send_voice")
+async def send_voice(
+    http: Request,
+    file: UploadFile = File(...),
+    user_id: int | None = Form(None),
+    init_data: str = Form(""),
+) -> JSONResponse:
+    """Голосовое сообщение из Mini App: тот же путь, что и у бота.
+
+    Аудио (webm/ogg из MediaRecorder браузера) сохраняется во временный
+    файл, расшифровывается через llm.transcribe_voice (ZvenoAI), проходит
+    проверку безопасности и уходит партнёру с пометкой
+    «🎤 (Голосовое сообщение)» — точно как голосовые из Telegram.
+    """
+    user_id, auth_error = _resolve_user(init_data, user_id, http, "send_voice")
+    if auth_error:
+        return auth_error
+
+    if not user_id:
+        return JSONResponse(
+            {"error": "Нужен init_data (из Telegram) или user_id (для тестов)"},
+            status_code=400,
+        )
+
+    # 1. Сессия и партнёр
+    session_id = await database.get_user_session(user_id)
+    if session_id is None:
+        return JSONResponse(
+            {"error": "Сначала запустите бота и создайте сессию"},
+            status_code=400,
+        )
+
+    partner_id = await database.get_session_partner(session_id, user_id)
+    if partner_id is None:
+        return JSONResponse({"error": "Ожидаем партнера"}, status_code=400)
+
+    # 2. «Водопад»: сессия без ступени — запускаем Каскад 1 сами
+    try:
+        await therapy.ensure_started(session_id, _get_bot())
+    except Exception as e:  # noqa: BLE001
+        print(f"[api] therapy.ensure_started не удался ({user_id}): {e!r}")
+
+    # 3. H3: тот же rate-limit, что у текста
+    now = time.monotonic()
+    last_ts = last_message_time.get(user_id)
+    if last_ts is not None and now - last_ts < RATE_LIMIT_SECONDS:
+        return JSONResponse(
+            {"error": "Пожалуйста, не так быстро. Подождите пару секунд"},
+            status_code=429,
+        )
+    last_message_time[user_id] = now
+
+    # 4. Временный файл: суффикс из имени загрузки (webm/ogg/mp3-что было),
+    #    чтобы ZvenoAI корректно определил формат
+    suffix = os.path.splitext(file.filename or "voice.webm")[1] or ".webm"
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    try:
+        # 4a. Скачиваем загрузку в файл
+        size = 0
+        with os.fdopen(fd, "wb") as out:
+            while chunk := await file.read(1024 * 256):
+                size += len(chunk)
+                out.write(chunk)
+        if size == 0:
+            return JSONResponse({"error": "Пустая аудиозапись"}, status_code=400)
+
+        # 4b. Распознавание (ZvenoAI). Три ветки ошибки — как у бота.
+        try:
+            text = (await llm.transcribe_voice(tmp_path) or "").strip()
+        except RuntimeError as e:
+            print(f"[api] распознавание не настроено ({user_id}): {e!r}")
+            return JSONResponse(
+                {"error": "Распознавание речи на сервере пока не настроено"},
+                status_code=503,
+            )
+        except Exception as e:  # noqa: BLE001 — сеть/лимиты провайдера
+            print(f"ERROR (распознавание, /api/send_voice {user_id}): {e!r}")
+            return JSONResponse(
+                {"error": "Извини, не получилось разобрать голосовое. Попробуй ещё раз"},
+                status_code=502,
+            )
+
+        if not text:
+            return JSONResponse(
+                {"error": "Не смог разобрать речь — запишись ещё раз или напиши текстом"},
+                status_code=400,
+            )
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:  # noqa: BLE001
+            pass
+
+    # 5. Проверка безопасности: угрозу не пропускаем, как и у текста
+    is_dangerous, reason = await llm.check_safety(text)
+    if is_dangerous:
+        print(f"[api] голосовое от {user_id} заблокировано проверкой безопасности: {reason}")
+        return JSONResponse({"blocked": True, "message": llm.SAFETY_RESPONSE})
+
+    # 6. Сохранение с пометкой (original — чистый текст, история с меткой)
+    labeled = "🎤 (Голосовое сообщение)\n" + text
+    try:
+        message_id = await database.add_message(session_id, user_id, text, labeled)
+    except Exception as e:  # noqa: BLE001
+        print(f"ERROR (database.add_message, voice {user_id}): {e!r}")
+        return JSONResponse(
+            {"error": "Техническая проблема, пожалуйста, повторите попытку через минуту"},
+            status_code=500,
+        )
+
+    # 7. Партнёру в Telegram — помеченную версию (как у бота)
+    try:
+        await _get_bot().send_message(chat_id=partner_id, text=labeled)
+    except Exception as e:  # noqa: BLE001
+        print(f"[api] не удалось доставить голосовое партнёру {partner_id}: {e!r}")
+
+    # 8. «Водопад»: голосовое считается полноценным ответом на ступень
+    new_step = None
+    try:
+        new_step = await therapy.maybe_advance(session_id, user_id, _get_bot())
+        if new_step is None:
+            current = await database.get_current_step(session_id)
+            print(f"[Waterfall] /api/send_voice: ступень не изменилась "
+                  f"(текущая: {current})")
+        else:
+            print(f"[Waterfall] /api/send_voice: ступень перешла в {new_step}")
+    except Exception as e:  # noqa: BLE001
+        print(f"[api] therapy.maybe_advance не удался (голос {user_id}): {e!r}")
+
+    return JSONResponse(
+        {"rephrased": labeled, "id": message_id, "step": new_step}
+    )
 
 
 class AnalyzeRequest(BaseModel):

@@ -7,7 +7,8 @@
 - SUMMARY_PROMPT    — системный промпт резюме сессии (/finish)
 - SAFETY_PROMPT     — системный промпт проверки безопасности
 - SAFETY_RESPONSE   — жёсткий ответ при обнаружении угрозы
-- client            — единственный AsyncOpenAI (один httpx-пул на процесс)
+- _get_client()     — единственный AsyncOpenAI к ZvenoAI (ленивый —
+                     с ключом ZVENO_API_KEY; «один httpx-пул на процесс»)
 - check_safety()    — (is_dangerous, reason); fail-open при недоступности
 - summarize_transcript() — резюме транскрипта, бросает исключение при сбое API
 - analyze_partner_message() — «Расшифровка»: разбор сообщения партнёра
@@ -18,7 +19,10 @@
 
 Модель диалога: живая переписка БЕЗ переформулирования (функции
 rephrase_text/build_rephrase_system_prompt/dynamic_max_tokens удалены
-после отключения автоформулировки сообщений).
+после отключения автоформулировки сообщений). ВСЕ запросы идут через
+ZvenoAI (base https://api.zveno.ai/v1) с ключом ZVENO_API_KEY:
+- текст — deepseek/deepseek-v4.1-flash;
+- аудио — openai/gpt-4o-mini-transcribe.
 Аутентификация/логика доставки остаются в main.py и api.py.
 """
 
@@ -33,12 +37,27 @@ from openai import AsyncOpenAI
 # вызвают load_dotenv() сами — двойной вызов безвреден)
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# ZvenoAI — единый OpenAI-совместимый шлюз для текста и аудио.
+ZVENO_BASE_URL = "https://api.zveno.ai/v1"
+# Текстовая модель (безопасность, анализ, суммаризация, советы)
+TEXT_MODEL = "deepseek/deepseek-v4.1-flash"
 
-# DeepSeek использует OpenAI-совместимый API
-client = AsyncOpenAI(api_key=OPENAI_API_KEY, base_url="https://api.deepseek.com")
+_client = None
 
-MODEL = "deepseek-chat"
+
+def _get_client():
+    """Ленивый единственный AsyncOpenAI-клиент ZvenoAI.
+
+    None — если ZVENO_API_KEY не задан в .env (функции сами решают,
+    как упасть: check_safety пропускает сообщение, разборы бросают).
+    """
+    global _client
+    key = os.getenv("ZVENO_API_KEY")
+    if not key:
+        return None
+    if _client is None:
+        _client = AsyncOpenAI(api_key=key, base_url=ZVENO_BASE_URL)
+    return _client
 
 
 # Анализ всей сессии по команде /finish
@@ -73,25 +92,27 @@ SAFETY_RESPONSE = (
 
 
 async def check_safety(text: str) -> tuple[bool, str]:
-    """Контекстная проверка сообщения на РЕАЛЬНУЮ угрозу через DeepSeek.
+    """Контекстная проверка сообщения на РЕАЛЬНУЮ угрозу (DeepSeek через Zveno).
 
-    Возвращает (is_dangerous, reason). Для скорости (модель deepseek-chat
-    единственная в API, ускоряем сам запрос):
+    Возвращает (is_dangerous, reason). Для скорости:
     - temperature=0 — однозначный вердикт, без креатива;
     - max_tokens=100 — малюсенький JSON перегоняется быстро;
-    - response_format json_object — DeepSeek отдаёт строгий JSON (слово
+    - response_format json_object — ответ строго в JSON (слово
       "json" в промпте есть, как требует документация).
 
-    Страховочная политика: если проверка недоступна (сеть, лимиты),
-    считаем текст БЕЗОПАСНЫМ — из-за сбоя сервиса сообщения
-    пользователей не должны переставать доставляться.
+    Страховочная политика: если проверка недоступна (сеть, лимиты,
+    ключ ZVENO_API_KEY не задан), считаем текст БЕЗОПАСНЫМ — из-за сбоя
+    сервиса сообщения пользователей не должны переставать доставляться.
     """
     if not text.strip():
         return False, ""
 
     try:
-        response = await client.chat.completions.create(
-            model=MODEL,
+        zveno = _get_client()
+        if zveno is None:
+            raise RuntimeError("ZVENO_API_KEY не задан — текстового провайдера нет")
+        response = await zveno.chat.completions.create(
+            model=TEXT_MODEL,
             messages=[
                 {"role": "system", "content": SAFETY_PROMPT},
                 {"role": "user", "content": text},
@@ -124,8 +145,11 @@ async def summarize_transcript(transcript: str) -> str:
     При сбое API исключение прокидывается наружу — вариант обработки
     в вызывающем коде (у бота и API они разные).
     """
-    response = await client.chat.completions.create(
-        model=MODEL,
+    zveno = _get_client()
+    if zveno is None:
+        raise RuntimeError("ZVENO_API_KEY не задан — текстового провайдера нет")
+    response = await zveno.chat.completions.create(
+        model=TEXT_MODEL,
         messages=[
             {"role": "system", "content": SUMMARY_PROMPT},
             {"role": "user", "content": transcript},
@@ -168,8 +192,11 @@ async def analyze_partner_message(text: str) -> str:
     исключение БРОСАЕТСЯ наружу — обработка на месте вызова (бот: block
     «Нейросеть недоступна»; API: 500).
     """
-    response = await client.chat.completions.create(
-        model=MODEL,
+    zveno = _get_client()
+    if zveno is None:
+        raise RuntimeError("ZVENO_API_KEY не задан — текстового провайдера нет")
+    response = await zveno.chat.completions.create(
+        model=TEXT_MODEL,
         messages=[
             {"role": "system", "content": ANALYZE_PROMPT},
             {"role": "user", "content": text},
@@ -202,14 +229,17 @@ async def expand_text(original_text: str, rephrased_text: str = "", context: str
     Берём последнее сообщение пользователя: оригинал — главный материал.
     При сбое API исключение прокидывается наружу.
     """
+    zveno = _get_client()
+    if zveno is None:
+        raise RuntimeError("ZVENO_API_KEY не задан — текстового провайдера нет")
     user_content = (
         f"Сообщение пользователя: {original_text}\n"
         f"Уже сделанная мягкая переформулировка: {rephrased_text or '(нет)'}"
     )
     if context:
         user_content += f"\nКонтекст от пользователя: {context}"
-    response = await client.chat.completions.create(
-        model=MODEL,
+    response = await zveno.chat.completions.create(
+        model=TEXT_MODEL,
         messages=[
             {"role": "system", "content": EXPAND_PROMPT},
             {"role": "user", "content": user_content},
@@ -220,35 +250,21 @@ async def expand_text(original_text: str, rephrased_text: str = "", context: str
     return response.choices[0].message.content
 
 
-# ── Распознавание голосовых сообщений: ZvenoAI ───────────────────────────
-# Отдельный провайдер с OpenAI-совместимым API аудио-транскрипции.
-# Ключ берётся из ZVENO_API_KEY; клиент создаём лениво — иначе при
-# отсутствии ключа .env падал бы импорт всего приложения.
-ZVENO_BASE_URL = "https://api.zveno.ai/v1"
+# ── Распознавание голосовых сообщений (ZvenoAI) ──────────────────────────
+# Тот же шлюз и тот же ключ, что и для текста, но аудио-модель.
+# (клиент общий — см. _get_client() наверху)
 ZVENO_MODEL = "openai/gpt-4o-mini-transcribe"
-_zveno_client = None
-
-
-def _get_zveno_client():
-    """Ленивый AsyncOpenAI-клиент ZvenoAI; None — если ключ не задан."""
-    global _zveno_client
-    key = os.getenv("ZVENO_API_KEY")
-    if not key:
-        return None
-    if _zveno_client is None:
-        _zveno_client = AsyncOpenAI(api_key=key, base_url=ZVENO_BASE_URL)
-    return _zveno_client
 
 
 async def transcribe_voice(file_path: str) -> str:
-    """Распознаёт голосовое сообщение (ogg от Telegram) через ZvenoAI.
+    """Распознаёт голосовое сообщение (ogg/webm от Telegram/браузера).
 
     Принимает локальный путь к скачанному аудиофайлу, возвращает
     распознанный текст (без leading/trailing пробелов). При сбое API
     или отсутствии ZVENO_API_KEY исключение БРОСАЕТСЯ наружу —
     обработка (человекопонятное сообщение пользователю) — на месте вызова.
     """
-    zveno = _get_zveno_client()
+    zveno = _get_client()
     if zveno is None:
         raise RuntimeError("ZVENO_API_KEY не задан — распознавание речи не настроено")
     with open(file_path, "rb") as audio:

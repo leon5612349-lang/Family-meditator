@@ -69,7 +69,7 @@ cp .env.example .env
 | Переменная | Описание |
 |---|---|
 | `BOT_TOKEN` | Токен бота от [@BotFather](https://t.me/BotFather) |
-| `OPENAI_API_KEY` | Ключ API совместимого провайдера (используется DeepSeek: `https://api.deepseek.com`) |
+| `ZVENO_API_KEY` | Ключ [ZvenoAI](https://zveno.ai) — все текстовые и аудио-запросы идут через него |
 
 `.env` не публикуется в репозитории.
 
