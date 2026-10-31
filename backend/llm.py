@@ -13,6 +13,8 @@
 - analyze_partner_message() — «Расшифровка»: разбор сообщения партнёра
                      по плану ЭФТ (бросает исключение при сбое API)
 - expand_text()     — развёрнутый совет «что сказать партнёру»
+- transcribe_voice() — распознавание голосовых через ZvenoAI, бросает
+                     исключение при сбое API или отсутствии ключа
 
 Модель диалога: живая переписка БЕЗ переформулирования (функции
 rephrase_text/build_rephrase_system_prompt/dynamic_max_tokens удалены
@@ -216,3 +218,42 @@ async def expand_text(original_text: str, rephrased_text: str = "", context: str
         frequency_penalty=0.2,
     )
     return response.choices[0].message.content
+
+
+# ── Распознавание голосовых сообщений: ZvenoAI ───────────────────────────
+# Отдельный провайдер с OpenAI-совместимым API аудио-транскрипции.
+# Ключ берётся из ZVENO_API_KEY; клиент создаём лениво — иначе при
+# отсутствии ключа .env падал бы импорт всего приложения.
+ZVENO_BASE_URL = "https://api.zveno.ai/v1"
+ZVENO_MODEL = "openai/gpt-4o-mini-transcribe"
+_zveno_client = None
+
+
+def _get_zveno_client():
+    """Ленивый AsyncOpenAI-клиент ZvenoAI; None — если ключ не задан."""
+    global _zveno_client
+    key = os.getenv("ZVENO_API_KEY")
+    if not key:
+        return None
+    if _zveno_client is None:
+        _zveno_client = AsyncOpenAI(api_key=key, base_url=ZVENO_BASE_URL)
+    return _zveno_client
+
+
+async def transcribe_voice(file_path: str) -> str:
+    """Распознаёт голосовое сообщение (ogg от Telegram) через ZvenoAI.
+
+    Принимает локальный путь к скачанному аудиофайлу, возвращает
+    распознанный текст (без leading/trailing пробелов). При сбое API
+    или отсутствии ZVENO_API_KEY исключение БРОСАЕТСЯ наружу —
+    обработка (человекопонятное сообщение пользователю) — на месте вызова.
+    """
+    zveno = _get_zveno_client()
+    if zveno is None:
+        raise RuntimeError("ZVENO_API_KEY не задан — распознавание речи не настроено")
+    with open(file_path, "rb") as audio:
+        result = await zveno.audio.transcriptions.create(
+            model=ZVENO_MODEL,
+            file=audio,
+        )
+    return (result.text or "").strip()

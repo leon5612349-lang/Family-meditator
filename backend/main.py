@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -489,6 +490,118 @@ async def myid_handler(message: Message) -> None:
     в Telegram без запуска Mini App внутри Telegram.
     """
     await message.answer(f"Ваш Telegram ID: {message.from_user.id}")
+
+
+@dp.message(F.voice)
+async def voice_message_handler(message: Message) -> None:
+    """Голосовое сообщение: распознаём через ZvenoAI и ведём как текст.
+
+    Партнёру текст уходит с пометкой «🎤 (Голосовое сообщение)»;
+    в БД храним распознанный текст в original и помеченную версию в
+    rephrased (история Mini App показывает то же, что и Telegram).
+    Далее — весь обычный путь: check_safety, отправка, водопад.
+    """
+    user_id = message.from_user.id
+
+    # Онбординг перехватывает поток: голос в анкете пока не нужен
+    if user_id in onboarding:
+        await message.answer(
+            "Голосовые приветствуются чуть позже — сейчас завершите "
+            "знакомство ответом текстом"
+        )
+        return
+
+    session_id = await database.get_user_session(user_id)
+    if session_id is None:
+        await message.answer("Нажмите /start, чтобы создать сессию и позвать партнёра")
+        return
+
+    partner_id = await database.get_session_partner(session_id, user_id)
+    if partner_id is None:
+        await message.answer("Ожидаем вашего партнера...")
+        return
+
+    # «Водопад»: сессия без ступени — запускаем Каскад 1 сами
+    try:
+        await therapy.ensure_started(session_id, bot)
+    except Exception as e:  # noqa: BLE001
+        print(f"ERROR (therapy.ensure_started, голос {user_id}): {e!r}")
+
+    # H3: тот же лимит, что и у текста
+    now = time.monotonic()
+    last = last_message_time.get(user_id)
+    if last is not None and now - last < RATE_LIMIT_SECONDS:
+        await message.answer("Пожалуйста, не так быстро. Подождите пару секунд")
+        return
+    last_message_time[user_id] = now
+
+    # Проверка безопасности: распознанный текст может содержать угрозу —
+    # сообщение не уходит партнёру и не сохраняется
+    text = None
+    try:
+        tg_file = await bot.get_file(message.voice.file_id)
+        fd, tmp_path = tempfile.mkstemp(suffix=".ogg")
+        os.close(fd)
+        try:
+            await bot.download_file(tg_file.file_path, tmp_path)
+            text = await llm.transcribe_voice(tmp_path)
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:  # noqa: BLE001 — мусор не критичен
+                pass
+    except RuntimeError as e:
+        # Нет ZVENO_API_KEY и т.п. — честная причина, а не «нейросеть недоступна»
+        print(f"ERROR (распознавание речи, {user_id}): {e!r}")
+        await message.answer(
+            "Распознавание речи на сервере пока не настроено. Напишите текстом"
+        )
+        return
+    except Exception as e:  # noqa: BLE001 — сеть, лимиты провайдера
+        print(f"ERROR (распознавание речи, {user_id}): {e!r}")
+        await message.answer("Извини, не получилось разобрать голосовое. Напишите текстом")
+        return
+
+    text = (text or "").strip()
+    if not text:
+        await message.answer("Не смог разобрать речь — попробуй ещё раз или напиши текстом")
+        return
+
+    # Проверка безопасности: реальная угроза не уходит партнёру
+    is_dangerous, reason = await llm.check_safety(text)
+    if is_dangerous:
+        logging.info(
+            "Голосовое от %s заблокировано проверкой безопасности: %s",
+            user_id, reason,
+        )
+        await message.answer(llm.SAFETY_RESPONSE)
+        return
+
+    labeled = "🎤 (Голосовое сообщение)\n" + text
+    try:
+        await database.add_message(
+            session_id, user_id, text, labeled
+        )
+    except Exception as e:  # noqa: BLE001
+        print(f"ERROR (database.add_message, голос от {user_id}): {e!r}")
+        await message.answer(
+            "Техническая проблема, пожалуйста, повторите попытку через минуту"
+        )
+        return
+
+    await message.answer("🎤 Распознала и передала партнёру")
+    try:
+        await bot.send_message(partner_id, labeled)
+    except Exception:
+        await message.answer(
+            "Партнёру не удалось доставить сообщение. Скорее всего, он заблокировал бота."
+        )
+
+    # «Водопад» (ЭФТ): голосовое считается полноценным ответом на ступень
+    try:
+        await therapy.maybe_advance(session_id, user_id, bot)
+    except Exception as e:  # noqa: BLE001 — ход важнее ступени
+        print(f"ERROR (therapy.maybe_advance, голос {user_id}): {e!r}")
 
 
 @dp.message()
