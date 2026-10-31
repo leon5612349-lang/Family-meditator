@@ -5,3 +5,4 @@ uvicorn[standard]>=0.30
 openai>=1.40
 python-dotenv>=1.0
 python-multipart>=0.0.9
+pydub>=0.25

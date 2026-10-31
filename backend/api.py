@@ -425,10 +425,10 @@ async def send_voice(
         )
     last_message_time[user_id] = now
 
-    # 4. Временный файл: суффикс из имени загрузки (webm/ogg/mp3-что было),
-    #    чтобы ZvenoAI корректно определил формат
-    suffix = os.path.splitext(file.filename or "voice.webm")[1] or ".webm"
-    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    # 4. Временный файл: MediaRecorder браузера всегда пишет webm —
+    #    суффикс фиксированный, чтобы openai/Zveno понял формат файла
+    #    (расширение учитывается библиотекой при отправке)
+    fd, tmp_path = tempfile.mkstemp(suffix=".webm")
     try:
         # 4a. Скачиваем загрузку в файл
         size = 0

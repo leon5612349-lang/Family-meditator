@@ -26,12 +26,13 @@ ZvenoAI (base https://api.zveno.ai/v1) с ключом ZVENO_API_KEY:
 Аутентификация/логика доставки остаются в main.py и api.py.
 """
 
+import asyncio
 import json
 import logging
 import os
 
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
 
 # Загружаем переменные окружения из файла .env (idempotent: и main, и api
 # вызвают load_dotenv() сами — двойной вызов безвреден)
@@ -253,23 +254,84 @@ async def expand_text(original_text: str, rephrased_text: str = "", context: str
 # ── Распознавание голосовых сообщений (ZvenoAI) ──────────────────────────
 # Тот же шлюз и тот же ключ, что и для текста, но аудио-модель.
 # (клиент общий — см. _get_client() наверху)
+#
+# Браузеры (MediaRecorder) пишут WebM/Opus — не все транскрипционные
+# модели принимают этот контейнер: Zveno может вернуть
+# «Audio file might be corrupted or unsupported». Поэтому два прохода:
+#   1) прямая передача .webm с правильным (имя, MIME);
+#   2) при отказе формата — локальная конвертация в OGG через pydub
+#      (нужен ffmpeg в PATH) и повторная отправка.
 ZVENO_MODEL = "openai/gpt-4o-mini-transcribe"
 
 
-async def transcribe_voice(file_path: str) -> str:
-    """Распознаёт голосовое сообщение (ogg/webm от Telegram/браузера).
+def _convert_audio_to_ogg(src: str) -> str | None:
+    """Конвертирует запись в OGG (pydub + ffmpeg). None — недоступно.
 
-    Принимает локальный путь к скачанному аудиофайлу, возвращает
-    распознанный текст (без leading/trailing пробелов). При сбое API
-    или отсутствии ZVENO_API_KEY исключение БРОСАЕТСЯ наружу —
-    обработка (человекопонятное сообщение пользователю) — на месте вызова.
+    pydub сам по себе не умеет WebM: требуется ffmpeg в PATH
+    (Windows: скачать сборку ffmpeg и добавить в PATH).
+    """
+    try:
+        from pydub import AudioSegment  # лениво: pydub — необязательный пакет
+    except ImportError:
+        print("ВНИМАНИЕ: pydub не установлен — конвертация аудио недоступна "
+              "(pip install pydub, и ffmpeg в PATH)")
+        return None
+    dst = src.rsplit(".", 1)[0] + ".ogg"
+    try:
+        audio = AudioSegment.from_file(src)
+        audio.export(dst, format="ogg")
+        return dst
+    except Exception as e:  # noqa: BLE001 — чаще всего нет ffmpeg
+        print(f"ERROR (pydub конвертация {dst!r}): {e!r} — проверьте, что ffmpeg в PATH")
+        return None
+
+
+def _is_format_reject(e: BaseException) -> bool:
+    """Определяем отказ по ФОРМАТУ (конвертация не поможет при других ошибках)."""
+    s = str(e).lower()
+    return "corrupt" in s or "unsupport" in s or "format" in s or "audio file" in s
+
+
+async def transcribe_voice(file_path: str) -> str:
+    """Распознаёт голосовое сообщение (webm/ogg) через ZvenoAI.
+
+    Первый проход отправляет файл как есть с корректным именем и
+    MIME-типом (кортеж (filename, fileobj, content_type) — библиотека
+    openai формирует multipart ровно с этими данными). Если Zveno
+    отклоняет контейнер WebM («corrupted or unsupported») — конвертируем
+    в OGG через pydub/ffmpeg и повторяем. При сбоях бросает исключения
+    (RuntimeError — проблема конфигурации/конвертации, прочие — API).
     """
     zveno = _get_client()
     if zveno is None:
         raise RuntimeError("ZVENO_API_KEY не задан — распознавание речи не настроено")
-    with open(file_path, "rb") as audio:
-        result = await zveno.audio.transcriptions.create(
-            model=ZVENO_MODEL,
-            file=audio,
+
+    async def _send(path: str, filename: str, mime: str) -> str:
+        with open(path, "rb") as audio:
+            result = await zveno.audio.transcriptions.create(
+                model=ZVENO_MODEL,
+                file=(filename, audio, mime),
+            )
+        return (result.text or "").strip()
+
+    base = os.path.basename(file_path) or "voice.webm"
+    try:
+        return await _send(file_path, base if base.endswith(".webm") else "voice.webm", "audio/webm")
+    except BadRequestError as e:
+        if not _is_format_reject(e):
+            raise
+        print(f"[Zveno] аудио отклонено по формату ({e}) — конвертирую в OGG")
+
+    ogg = await asyncio.to_thread(_convert_audio_to_ogg, file_path)
+    if ogg is None:
+        raise RuntimeError(
+            "ZvenoAI не принимает запись WebM, а локальная конвертация "
+            "недоступна: установите pydub (pip install pydub) и ffmpeg"
         )
-    return (result.text or "").strip()
+    try:
+        return await _send(ogg, os.path.basename(ogg), "audio/ogg")
+    finally:
+        try:
+            os.remove(ogg)
+        except OSError:  # noqa: BLE001
+            pass
