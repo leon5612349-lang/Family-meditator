@@ -252,6 +252,20 @@ async def index() -> FileResponse:
     )
 
 
+@app.get("/psychologist_female.png")
+async def female_avatar_image() -> FileResponse:
+    """Картинка женского аватара персонажа (используется в Mini App).
+
+    Явный маршрут вместо раздачи всего каталога frontend/: это файл
+    рядом с index.html, отдаём с дневным кэшем.
+    """
+    return FileResponse(
+        FRONTEND_DIR / "psychologist_female.png",
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 def _get_bot():
     """Возвращает экземпляр Telegram-бота без двойного создания.
 
@@ -869,6 +883,8 @@ async def get_history(
             "step": step,
             "step_text": step_text,
             "ready": ready,
+            # Пол пользователя из онбординга — аватар персонажа в Mini App
+            "gender": (info or {}).get("gender"),
         }
     )
 

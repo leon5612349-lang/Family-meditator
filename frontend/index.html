@@ -103,16 +103,41 @@
             flex-shrink: 0;
         }
 
-        .header-icon {
+        /* ── Аватары персонажа (шаблоны по полу из онбординга) ───────── */
+        .bot-avatar {
             width: 48px;
             height: 48px;
-            border-radius: 18px;
-            background: var(--accent-soft);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            flex-shrink: 0;
+            border-radius: 50%;
+            object-fit: cover;
+            display: block;
+        }
+
+        #headerAvatar .bot-avatar { width: 44px; height: 44px; }
+
+        #stageAvatar .bot-avatar {
+            width: 152px;
+            height: 152px;
+            border-radius: 26px;
+        }
+
+        .analysis-avatar .bot-avatar { width: 30px; height: 30px; }
+
+        #headerAvatar svg {
+            width: 44px;
+            height: auto;
+            display: block;
+        }
+
+        .stage-avatar svg {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .analysis-avatar svg {
+            width: 28px;
+            height: auto;
+            display: block;
         }
 
         .header-title {
@@ -321,15 +346,15 @@
             height: 48px;
             border: none;
             border-radius: 50%;
-            background: linear-gradient(150deg, var(--accent), var(--accent-deep));
+            background: var(--accent);
             color: var(--accent-text);
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             flex-shrink: 0;
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-            box-shadow: var(--shadow-deep);
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            box-shadow: 0 3px 0 var(--accent-deep);
         }
 
         .send-btn svg {
@@ -338,31 +363,38 @@
             display: block;
         }
 
-        .send-btn:active  { transform: scale(0.92); }
+        .send-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 var(--accent-deep);
+        }
         .send-btn:disabled { opacity: 0.4; }
 
         /* Кнопка микрофона: в стиле отправки, при записи — красная пульсация */
         .mic-btn {
-            width: 44px;
-            height: 44px;
-            border: 1px solid var(--line);
+            width: 46px;
+            height: 46px;
+            border: none;
             border-radius: 50%;
             background: var(--surface);
-            color: var(--text-muted);
+            color: var(--accent-deep);
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             flex-shrink: 0;
-            transition: transform 0.15s ease, background-color 0.2s ease,
+            transition: transform 0.1s ease, background-color 0.2s ease,
                         color 0.2s ease;
+            box-shadow: 0 3px 0 var(--line);
         }
         .mic-btn svg { width: 18px; height: 18px; display: block; }
-        .mic-btn:active { transform: scale(0.92); }
+        .mic-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 var(--line);
+        }
         .mic-btn.recording {
             background: #C85B5B;
             color: #FFFFFF;
-            border-color: #B54B4B;
+            box-shadow: 0 3px 0 #9E4343;
             animation: micPulse 1.4s ease-in-out infinite;
         }
         .mic-btn:disabled { opacity: 0.4; cursor: default; }
@@ -372,28 +404,202 @@
             50%      { transform: scale(1.08); }
         }
 
-        /* ── «Водопад»: мягкая карточка текущей ступени ───────── */
+        /* ═══════════════════════════════════════════════════════════
+           РЕДИЗАЙН «Waterfall» (игровой, тёмный, Duolingo-реф.)
+           ─────────────────────────────────────────────────────────
+           Идея: каскады — уровни игры, пара — игроки,
+           медиатор — персонаж, который говорит в облачке.
+           Секция в конце файла переопределяет светло-тему БЛОЧНО:
+           интерфейс живёт на графитовом фоне с яркими акцентами.
+           ═══════════════════════════════════════════════════════════ */
 
-        .step-bar {
-            padding: 6px 14px 0;
+        .progress-wrap {
+            padding: 0 14px 6px;
+            background-color: var(--bg);
             flex-shrink: 0;
         }
 
-        .step-card {
-            background: var(--accent-soft);
-            border: 1.5px solid var(--accent-deep);
-            border-radius: var(--radius);
-            padding: 12px 16px;
-            font-family: var(--font-body);
-            font-size: 13.5px;
-            line-height: 1.55;
-            color: var(--text);
-            text-align: center;
-            font-weight: 600;
-            white-space: pre-line;   /* подпись шага отдельно от текста (¶) */
+        /* Редизайн в светлой теме: грим track = тёплый крем */
+        .progress-bar {
+            height: 12px;
+            border-radius: 999px;
+            background: #EDE6D9;
+            overflow: hidden;
+            box-shadow: 0 2px 0 #E0D8C9;
         }
 
-        /* ── «Водопад»: кнопка перехода на Озере ──────────────── */
+        .progress-fill {
+            height: 100%;
+            width: 0;
+            border-radius: 999px;
+            background: var(--accent);
+            transition: width 0.6s ease;
+        }
+
+        /* Заголовок шага — крупный, но обязателно в две строки */
+        .step-title {
+            font-family: var(--font-title);
+            font-size: clamp(21px, 5.4vw, 28px);
+            font-weight: 800;
+            line-height: 1.12;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            margin: 4px 0 10px;
+        }
+
+        /* Сцена: персонаж слева, облачко-речь справа */
+        .stage {
+            padding: 4px 14px 14px;
+        }
+
+        .stage-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+        }
+
+        .mascot-wrap {
+            flex-shrink: 0;
+            width: 152px;
+        }
+
+        .mascot {
+            width: 152px;
+            height: auto;
+            display: block;
+        }
+
+        /* Облачко-реплика: кремово-белое с хвостиком к персонажу */
+        .speech {
+            position: relative;
+            flex: 1;
+            background: #FFFEFA;
+            border-radius: 16px;
+            padding: 12px 15px;
+            color: var(--text);
+            font-family: var(--font-body);
+            font-size: 14.5px;
+            font-weight: 600;
+            line-height: 1.5;
+            box-shadow: 0 4px 14px rgba(148, 123, 95, 0.18);
+            margin-bottom: 24px;
+        }
+        /* хвостик: классический треугольник, указывающий на аватар слева */
+        .speech::before {
+            content: "";
+            position: absolute;
+            left: -9px;
+            bottom: 16px;
+            width: 0;
+            height: 0;
+            border-top: 9px solid transparent;
+            border-bottom: 9px solid transparent;
+            border-right: 9px solid #FFFEFA;
+        }
+
+        /* Огромная кнопка:_inactive — серо-кремовая, ready — терракота */
+        .send-huge {
+            width: 100%;
+            margin-top: 10px;
+            padding: 16px 18px;
+            border: none;
+            border-radius: var(--radius);
+            font-family: var(--font-title);
+            font-size: 16px;
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            background: #EDE6D9;
+            box-shadow: 0 5px 0 #DAD0BF;
+            cursor: pointer;
+            transition: transform 0.1s ease, box-shadow 0.1s ease,
+                        background-color 0.25s ease, color 0.25s ease;
+        }
+
+        .send-huge.ready {
+            background: var(--accent-deep);
+            color: #FFFFFF;
+            box-shadow: 0 5px 0 #A65B43;
+        }
+
+        .send-huge:active.ready {
+            transform: translateY(4px);
+            box-shadow: 0 1px 0 #A65B43;
+        }
+
+        .input-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Чипы: кремово-белые без рамок */
+        .analyze-chip, .advice-chip {
+            border: none;
+            background: var(--surface);
+            color: var(--accent-deep);
+            padding: 8px 15px;
+            font-size: 12.5px;
+            box-shadow: var(--shadow);
+        }
+
+        /* Карточка разбора: светло-шалфейная, текст — тёмно-коричневый */
+        .analysis-card {
+            background: #F0F3EA;
+            color: var(--text);
+            box-shadow: 0 3px 0 #DCE3D2;
+        }
+        .analysis-card .label { color: var(--sage-deep); }
+
+        /* Похвала: шалфейная, белые буквы */
+        .praise {
+            background: var(--sage);
+            color: #FFFFFF;
+            box-shadow: 0 4px 0 var(--sage-deep);
+        }
+
+        /* Кнопка «Дальше»: сплошной шалфей */
+        .lake-btn {
+            background: var(--sage);
+            color: #FFFFFF;
+            box-shadow: 0 6px 0 var(--sage-deep);
+        }
+
+        .lake-btn:hover { filter: brightness(0.97); }
+
+        .lake-btn:active {
+            transform: translateY(5px);
+            box-shadow: 0 1px 0 var(--sage-deep);
+        }
+
+        /* Отправка текстом: входное поле выше кнопки остаётся рядом */
+        .send-huge:disabled { opacity: 1; }
+
+        /* ── Похвала (эмпатия) при входе в Озеро ───────────────── */
+        .praise {
+            position: absolute;
+            top: 55%;
+            left: 50%;
+            transform: translate(-50%, -14px);
+            z-index: 30;
+            background: var(--sage);
+            color: #FFFFFF;
+            font-family: var(--font-body);
+            font-size: 13.5px;
+            font-weight: 700;
+            padding: 11px 18px;
+            border-radius: 16px;
+            box-shadow: 0 3px 0 var(--sage-deep), var(--shadow);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.35s ease, transform 0.35s ease;
+        }
+        .praise.show {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+
+        /* ── «Водопад»: кнопка движения дальше (объёмная, Duolingo-стиль) ──── */
 
         .lake-bar {
             padding: 6px 14px 0;
@@ -404,32 +610,30 @@
         .lake-btn {
             width: 100%;
             padding: 12px 18px;
-            border: 1.5px solid var(--sage);
+            border: none;
             border-radius: var(--radius);
             font-family: var(--font-body);
             font-size: 15px;
-            font-weight: 700;
-            color: var(--sage-deep);
-            background: var(--sage-soft);
+            font-weight: 800;
+            color: #FFFFFF;
+            background: var(--sage);
+            /* Duolingo: сплошной нижний край даёт объём без градиента */
+            box-shadow: 0 4px 0 var(--sage-deep);
             cursor: pointer;
-            transition: transform 0.15s ease, background-color 0.15s ease,
-                        color 0.15s ease;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
         }
 
-        .lake-btn:hover {
-            background: var(--sage);
-            color: var(--sage-text-on);
-        }
+        .lake-btn:hover { filter: brightness(0.97); }
 
         .lake-btn:active {
-            transform: scale(0.98);
-            background: color-mix(in srgb, var(--sage) 85%, #000 15%);
-            color: var(--sage-text-on);
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 var(--sage-deep);
         }
 
         .lake-btn:disabled {
             opacity: 0.6;
             cursor: default;
+            transform: none;
         }
 
         .lake-btn .sub {
@@ -454,27 +658,23 @@
         .finish-btn {
             width: 100%;
             padding: 12px 18px;
-            border: 1.5px solid var(--sage);
+            border: none;
             border-radius: var(--radius);
             font-family: var(--font-body);
             font-size: 15px;
-            font-weight: 700;
-            color: var(--sage-deep);
-            background: var(--sage-soft);
+            font-weight: 800;
+            color: var(--accent-deep);
+            background: var(--accent-soft);
+            box-shadow: 0 3px 0 color-mix(in srgb, var(--accent-deep) 55%, transparent);
             cursor: pointer;
-            transition: transform 0.15s ease, background-color 0.15s ease,
-                        color 0.15s ease;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
         }
 
-        .finish-btn:hover {
-            background: var(--sage);
-            color: var(--sage-text-on);
-        }
+        .finish-btn:hover { background: color-mix(in srgb, var(--accent-soft) 80%, #FFFFFF 0%); }
 
         .finish-btn:active {
-            transform: scale(0.98);
-            background: color-mix(in srgb, var(--sage) 85%, #000 15%);
-            color: var(--sage-text-on);
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 color-mix(in srgb, var(--accent-deep) 55%, transparent);
         }
 
         .finish-btn .sub {
@@ -664,7 +864,7 @@
             align-self: stretch;
             margin: 4px 0 10px;
             background: var(--sage-soft);
-            border: 1.5px solid var(--sage);
+            border: none;
             border-radius: var(--radius);
             padding: 13px 16px;
             font-family: var(--font-body);
@@ -673,27 +873,102 @@
             color: var(--text);
             white-space: pre-line;   /* структура разбора с переносами */
         }
-        .analysis-card .label {
+
+        .analysis-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .analysis-avatar {
+            width: 30px;
+            height: 30px;
+            flex-shrink: 0;
+        }
+        .analysis-avatar svg {
+            width: 30px;
+            height: 30px;
             display: block;
+            border-radius: 50%;
+        }
+
+        .analysis-card .label {
             font-family: var(--font-title);
-            font-size: 11px;
+            font-size: 12.5px;
             font-weight: 700;
-            letter-spacing: 0.4px;
+            letter-spacing: 0.2px;
             color: var(--sage-deep);
-            margin-bottom: 6px;
         }
     </style>
 </head>
 <body>
 
+    <!-- ══ Заготовки аватарок персонажа ══════════════════════════
+         Пол из онбординга выбирает шаблон: male / female / neutral
+         (чаше дерева — если gender ещё не известен). SVG без фиксированных
+         width/height — размеры задаёт CSS контейнера. -->
+    <div id="avatar-male" hidden>
+        <svg viewBox="0 0 200 216" role="img" aria-label="Психолог-медиатор (мужской)">
+            <ellipse cx="100" cy="207" rx="53" ry="9" fill="#6F6A66" opacity="0.35"/>
+            <path d="M62,158 L138,158 L146,198 L54,198 Z" fill="#9CAF88"/>
+            <rect x="62" y="176" width="18" height="5" rx="2.5" fill="#7E905F"/>
+            <rect x="120" y="176" width="18" height="5" rx="2.5" fill="#7E905F"/>
+            <rect x="87" y="112" width="26" height="26" rx="9" fill="#F2C29B"/>
+            <rect x="74" y="133" width="52" height="22" rx="10" fill="#9CAF88"/>
+            <rect x="88" y="135" width="3" height="18" rx="1.5" fill="#7E905F"/>
+            <rect x="109" y="135" width="3" height="18" rx="1.5" fill="#7E905F"/>
+            <rect x="42" y="26" width="116" height="104" rx="34" fill="#F2C29B"/>
+            <rect x="84" y="118" width="32" height="11" rx="5.5" fill="#E0A87F"/>
+            <rect x="42" y="22" width="116" height="32" rx="16" fill="#4A3B32"/>
+            <rect x="42" y="48" width="11" height="17" rx="5.5" fill="#4A3B32"/>
+            <rect x="147" y="48" width="11" height="17" rx="5.5" fill="#4A3B32"/>
+            <path d="M64,58 q13,-8 26,-1" stroke="#4A3B32" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+            <path d="M110,62 q13,-4 26,1" stroke="#4A3B32" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+            <ellipse cx="79" cy="80" rx="14" ry="9" fill="#F2C29B"/>
+            <ellipse cx="121" cy="80" rx="14" ry="9" fill="#F2C29B"/>
+            <ellipse cx="79" cy="92" rx="11" ry="15" fill="#FFFFFF"/>
+            <ellipse cx="121" cy="92" rx="11" ry="15" fill="#FFFFFF"/>
+            <path d="M68,79 q11,-6 22,0" stroke="#4A3B32" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <path d="M110,79 q11,-6 22,0" stroke="#4A3B32" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <ellipse cx="79" cy="96" rx="7.5" ry="10.5" fill="#1E1B17"/>
+            <ellipse cx="121" cy="96" rx="7.5" ry="10.5" fill="#1E1B17"/>
+            <circle cx="74.5" cy="90" r="3.5" fill="#FFFFFF"/>
+            <circle cx="83" cy="101" r="1.8" fill="#FFFFFF"/>
+            <circle cx="116.5" cy="90" r="3.5" fill="#FFFFFF"/>
+            <circle cx="125" cy="101" r="1.8" fill="#FFFFFF"/>
+            <ellipse cx="58" cy="104" rx="7" ry="4.5" fill="#D98A72" opacity="0.22"/>
+            <ellipse cx="142" cy="104" rx="7" ry="4.5" fill="#D98A72" opacity="0.22"/>
+            <ellipse cx="100" cy="104" rx="5.5" ry="5" fill="#EDB58E"/>
+            <path d="M86,116 Q100,126 114,116" stroke="#D98A72" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+        </svg>
+    </div>
+    <div id="avatar-female" hidden>
+        <img src="psychologist_female.png" class="bot-avatar"
+             alt="Психолог-медиатор (женский)">
+    </div>
+    <div id="avatar-neutral" hidden>
+        <svg viewBox="0 0 64 64" role="img" aria-label="Уголок">
+            <path d="M32,54 C16,46 12,28 34,10 C54,26 50,46 32,54 Z" fill="#9CAF88"/>
+            <path d="M32,54 C32,40 32,26 33,14" stroke="#7E905F" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        </svg>
+    </div>
+
     <!-- Шапка «Наш уголок» -->
     <header class="header">
-        <div class="header-icon">🌿</div>
+        <div class="header-icon" id="headerAvatar"></div>
         <div>
             <div class="header-title">Наш уголок</div>
             <div class="header-sub">пространство тёплого диалога</div>
         </div>
     </header>
+
+    <!-- Тонкий прогресс «Водопада» — заполняется по мере каскадов -->
+    <div class="progress-wrap">
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+    </div>
 
     <!-- Окно сообщений — страница дневника -->
     <main class="chat" id="chat">
@@ -704,6 +979,19 @@
         <div class="typing" id="typing" hidden>
             <span></span><span></span><span></span>
         </div>
+
+        <!-- ══ Сцена «Водопада»: персонаж + облачко ═══════════════ -->
+        <section class="stage" id="stage" hidden>
+            <div class="step-title" id="stepTitle"></div>
+            <div class="stage-row">
+                <div class="mascot-wrap">
+                    <div class="stage-avatar" id="stageAvatar"></div>
+                </div>
+                <div class="speech">
+                    <div class="speech-text" id="speechText"></div>
+                </div>
+            </div>
+        </section>
 
         <!-- ══ Ламповый экран приветствия ═══════════════════════════ -->
         <!-- Показывается, пока чат пуст; исчезает с первым сообщением. -->
@@ -836,32 +1124,25 @@
         </div>
     </main>
 
-    <!-- «Водопад»: карточка текущей ступени (вопрос/озеро) — мягкая плашка
-         над полем ввода. При переходе на новый шаг текст заменяется,
-         без сессии плашка прячется -->
-    <div class="step-bar" id="stepBar" hidden>
-        <div class="step-card" id="stepCard"></div>
-    </div>
+    <!-- «Водопад»: кнопка движения дальше — видна только на Озере -->
 
     <!-- Поле ввода -->
     <form class="input-bar" id="sendForm">
-        <input class="input" id="messageInput"
-               type="text" placeholder="Напишите, что чувствуете..."
-               autocomplete="off" maxlength="1000">
-        <button class="mic-btn" id="micBtn" type="button" title="Голосовое сообщение">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="2" width="6" height="12" rx="3"/>
-                <path d="M5 10v1a7 7 0 0 0 14 0v-1"/>
-                <path d="M12 18v4"/>
-            </svg>
-        </button>
-        <button class="send-btn" type="submit" id="sendBtn" title="Отправить">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 19V5"/>
-                <path d="M5 12l7-7 7 7"/>
-            </svg>
+        <div class="input-row">
+            <input class="input" id="messageInput"
+                   type="text" placeholder="Напишите, что чувствуете..."
+                   autocomplete="off" maxlength="1000">
+            <button class="mic-btn" id="micBtn" type="button" title="Голосовое сообщение">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="2" width="6" height="12" rx="3"/>
+                    <path d="M5 10v1a7 7 0 0 0 14 0v-1"/>
+                    <path d="M12 18v4"/>
+                </svg>
+            </button>
+        </div>
+        <button class="send-huge" id="sendBtn" type="submit" disabled>
+            ОТПРАВИТЬ
         </button>
     </form>
 
@@ -890,21 +1171,15 @@
 
         const tg = window.Telegram && window.Telegram.WebApp;
 
-        // Тема: внутри Telegram — colorScheme телефона,
-        // вне Telegram — системная настройка браузера.
+        // Тема: редизайн «Waterfall» вернулся на ламповый кремовый фон —
+        // акценты терракота/шалфей будут «выпрыгивать» из светлой бумаги
         function applyTheme(scheme) {
-            document.documentElement.dataset.theme =
-                scheme === "dark" ? "dark" : "light";
+            document.documentElement.dataset.theme = "light";
         }
         if (tg) {
             applyTheme(tg.colorScheme);
-            tg.onEvent("themeChanged", () => applyTheme(tg.colorScheme));
         } else {
-            applyTheme(
-                window.matchMedia("(prefers-color-scheme: dark)").matches
-                    ? "dark"
-                    : "light"
-            );
+            applyTheme(null);
         }
         // Демо-сцена: заполняем чат примерами сообщений,
         // чтобы оценить внешний вид до подключения сервера.
@@ -978,16 +1253,24 @@
             bubble.after(chip);
         }
 
-        // Карточка разбора: с иконкой психолога, с переносами строк,
-        // видит только запросивший — партнёру она не уходит
+        // Карточка разбора: аватар персонажа + структурированный текст
+        // с переносами строк; видит только запросивший
         function addAnalysis(text) {
             hideWelcome(false);
             const el = document.createElement("div");
             el.className = "analysis-card";
+            const head = document.createElement("div");
+            head.className = "analysis-head";
+            const av = document.createElement("div");
+            av.className = "analysis-avatar";
+            av.innerHTML = currentAvatarMarkup();
+            av.dataset.current = currentAvatarKind;
+            head.appendChild(av);
             const l = document.createElement("span");
             l.className = "label";
-            l.textContent = "🧠 Расшифровка: что на самом деле хотел сказать партнёр";
-            el.appendChild(l);
+            l.textContent = "Расшифровка: что на самом деле хотел сказать партнёр";
+            head.appendChild(l);
+            el.appendChild(head);
             el.appendChild(document.createTextNode(text));
             chat.insertBefore(el, typing);
             if (adviceChip) chat.insertBefore(adviceChip, typing);
@@ -1042,20 +1325,107 @@
         let currentReadyFlag = false;
         let lastStepText = null;   // текст карточки текущей ступени
 
+        // ── Аватар персонажа: выбор шаблона по полу онбординга ──────────
+        // 'М'/male → мужской; 'Ж'/female → женский; иначе — лист.
+        const AVATAR_MARKUP = {
+            male: document.getElementById("avatar-male").innerHTML,
+            female: document.getElementById("avatar-female").innerHTML,
+            neutral: document.getElementById("avatar-neutral").innerHTML,
+        };
+        let currentAvatarKind = null;
+
+        function avatarKindFor(gender) {
+            if (gender === "М" || gender === "м" || gender === "male") return "male";
+            if (gender === "Ж" || gender === "ж" || gender === "female") return "female";
+            return "neutral";
+        }
+
+        function currentAvatarMarkup() {
+            return AVATAR_MARKUP[currentAvatarKind || "neutral"];
+        }
+
+        // Header всегда показывает выбранный шаблон; уже отрисованные
+        // карточки разбора обновляются на месте (при смене пола)
+        function setAvatarHeaderElement() {
+            const header = document.getElementById("headerAvatar");
+            if (header.dataset.current !== currentAvatarKind) {
+                header.innerHTML = currentAvatarMarkup();
+                header.dataset.current = currentAvatarKind;
+            }
+            const stageAvatarEl = document.getElementById("stageAvatar");
+            if (stageAvatarEl && stageAvatarEl.dataset.current !== currentAvatarKind) {
+                stageAvatarEl.innerHTML = currentAvatarMarkup();
+                stageAvatarEl.dataset.current = currentAvatarKind;
+            }
+            document.querySelectorAll(".analysis-avatar").forEach((a) => {
+                if (a.dataset.current !== currentAvatarKind) {
+                    a.innerHTML = currentAvatarMarkup();
+                    a.dataset.current = currentAvatarKind;
+                }
+            });
+        }
+
+        function setAvatar(gender) {
+            const kind = avatarKindFor(gender);
+            if (kind === currentAvatarKind) return;
+            currentAvatarKind = kind;
+            setAvatarHeaderElement();
+        }
+
+        // при загрузке — нейтральный лист (gender ещё не подтянулся)
+        setAvatar("");
+
         function renderStepCard(stepText) {
-            const card = document.getElementById("stepCard");
-            const bar = document.getElementById("stepBar");
+            const stage = document.getElementById("stage");
+            const titleEl = document.getElementById("stepTitle");
+            const speechEl = document.getElementById("speechText");
+            const fill = document.getElementById("progressFill");
             if (!stepText) {
-                bar.hidden = true;
-                card.textContent = "";
+                stage.hidden = true;
                 lastStepText = null;
+                document.getElementById("progressFill").style.width = "0%";
                 return;
             }
+            // Пол из /api/history уже мог сменить шаблон — на сцене всегда
+            // свежий аватар (sync при каждом переходе)
+            setAvatarHeaderElement();
             if (stepText === lastStepText) return;  // без мерцания
             lastStepText = stepText;
-            card.textContent = stepText;
-            bar.hidden = false;
-            chat.scrollTop = chat.scrollHeight;
+            // формат строки: "🌿 Шаг N. Название\n\nТекст ступени"
+            const sep = stepText.indexOf("\n\n");
+            let label = sep > 0 ? stepText.slice(0, sep) : stepText;
+            const body = sep > 0 ? stepText.slice(sep + 2) : "";
+            // эмодзи-листик в начале подписи не нужен: персонаж в сцене
+            label = label.replace(/^🌿\s*/, "");
+            titleEl.textContent = label;
+            speechEl.textContent = body;
+
+            // «Шаг N из 5»: прогресс-бар наверху страницы
+            const num = /Шаг\s*(\d+)/.exec(label);
+            if (num) {
+                fill.style.width = Math.round((+num[1] / 5) * 100) + "%";
+            } else {
+                fill.style.width = "0%";
+            }
+            stage.hidden = false;
+            chat.scrollTop = 0;
+        }
+
+        // Эмпатия: короткая похвала при переходе пары в Озеро
+        let praiseTimer = null;
+        function showPraise(text) {
+            const old = document.querySelector(".praise");
+            if (old) old.remove();
+            const pr = document.createElement("div");
+            pr.className = "praise";
+            pr.textContent = text;
+            document.body.appendChild(pr);
+            requestAnimationFrame(() => pr.classList.add("show"));
+            clearTimeout(praiseTimer);
+            praiseTimer = setTimeout(() => {
+                pr.classList.remove("show");
+                setTimeout(() => pr.remove(), 400);
+            }, 4500);
         }
 
         function hideWelcome(instant) {
@@ -1226,8 +1596,19 @@
                     currentStep = data.step;
                 }
                 currentReadyFlag = data.ready === true;
+                // Пол → аватар: заменяются шапка, сцена, карточки разбора
+                if (typeof data.gender !== "undefined") {
+                    setAvatar(data.gender || "");
+                }
                 if (currentStep !== stepBefore) {
                     applyStepState();
+                    // Эмпатия: пара переведена в Озеро — поддержим словами
+                    if (stepBefore
+                        && stepBefore !== currentStep
+                        && currentStep
+                        && currentStep.endsWith("_LAKE")) {
+                        showPraise("Вы молодцы! Продолжайте в том же духе 💚");
+                    }
                 }
                 // вопросы бота видны и в Mini App: карточка текущей ступени
                 renderStepCard(data.step_text || null);
@@ -1274,12 +1655,22 @@
             fetchHistory(); // первая подгрузка не должна ждать 3 секунды
         }
 
+        // Огромная кнопка: серая на пустом поле, яркая на тексте
+        const sendHugeBtn = document.getElementById("sendBtn");
+        const messageInputEl = document.getElementById("messageInput");
+        messageInputEl.addEventListener("input", () => {
+            sendHugeBtn.disabled = !messageInputEl.value.trim();
+            sendHugeBtn.classList.toggle("ready", !!messageInputEl.value.trim());
+        });
+
         document.getElementById("sendForm").addEventListener("submit", async (e) => {
             e.preventDefault();
             const input = document.getElementById("messageInput");
             const text = input.value.trim();
             if (!text) return;
             input.value = "";
+            sendHugeBtn.disabled = true;
+            sendHugeBtn.classList.remove("ready");
 
             // Пока идёт проверка безопасности — показываем «печатает...»
             typing.hidden = false;
