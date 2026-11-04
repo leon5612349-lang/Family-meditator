@@ -311,14 +311,25 @@
         /* ── Поле ввода ───────────────────────────────────────── */
 
         .input-bar {
-            display: flex;
-            align-items: flex-end;
-            gap: 10px;
+            display: block;
             padding: 10px 14px;
             padding-bottom: calc(10px + var(--tg-safe-area-inset-bottom, 0px));
             background-color: var(--bg);
             border-top: 1px solid var(--line);
             flex-shrink: 0;
+        }
+
+        .input-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .input-bar .send-huge {
+            margin-top: 10px;
+            width: 100%;
+            box-sizing: border-box;   /* не вылазит за экран даже при padding */
         }
 
         input.input {
@@ -1600,6 +1611,11 @@
                 if (typeof data.gender !== "undefined") {
                     setAvatar(data.gender || "");
                 }
+                // Аватар в шапке — только в активной сессии (есть ступень
+                // водопада или история сообщений); на экране приветствия
+                // с чашками персонажа не видно
+                const hasSession = !!data.step || (data.messages || []).length > 0;
+                document.getElementById("headerAvatar").hidden = !hasSession;
                 if (currentStep !== stepBefore) {
                     applyStepState();
                     // Эмпатия: пара переведена в Озеро — поддержим словами
