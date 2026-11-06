@@ -103,7 +103,7 @@
             flex-shrink: 0;
         }
 
-        /* ── Аватары персонажа (шаблоны по полу из онбординга) ───────── */
+        /* ── Аватары персонажа (один PNG на всех) ───────────────────── */
         .bot-avatar {
             width: 48px;
             height: 48px;
@@ -117,28 +117,10 @@
         #stageAvatar .bot-avatar {
             width: 152px;
             height: 152px;
-            border-radius: 26px;
+            border-radius: 50%;
         }
 
         .analysis-avatar .bot-avatar { width: 30px; height: 30px; }
-
-        #headerAvatar svg {
-            width: 44px;
-            height: auto;
-            display: block;
-        }
-
-        .stage-avatar svg {
-            width: 100%;
-            height: auto;
-            display: block;
-        }
-
-        .analysis-avatar svg {
-            width: 28px;
-            height: auto;
-            display: block;
-        }
 
         .header-title {
             font-family: var(--font-title);
@@ -982,50 +964,13 @@
          Пол из онбординга выбирает шаблон: male / female / neutral
          (чаше дерева — если gender ещё не известен). SVG без фиксированных
          width/height — размеры задаёт CSS контейнера. -->
-    <div id="avatar-male" hidden>
-        <svg viewBox="0 0 200 216" role="img" aria-label="Психолог-медиатор (мужской)">
-            <ellipse cx="100" cy="207" rx="53" ry="9" fill="#6F6A66" opacity="0.35"/>
-            <path d="M62,158 L138,158 L146,198 L54,198 Z" fill="#9CAF88"/>
-            <rect x="62" y="176" width="18" height="5" rx="2.5" fill="#7E905F"/>
-            <rect x="120" y="176" width="18" height="5" rx="2.5" fill="#7E905F"/>
-            <rect x="87" y="112" width="26" height="26" rx="9" fill="#F2C29B"/>
-            <rect x="74" y="133" width="52" height="22" rx="10" fill="#9CAF88"/>
-            <rect x="88" y="135" width="3" height="18" rx="1.5" fill="#7E905F"/>
-            <rect x="109" y="135" width="3" height="18" rx="1.5" fill="#7E905F"/>
-            <rect x="42" y="26" width="116" height="104" rx="34" fill="#F2C29B"/>
-            <rect x="84" y="118" width="32" height="11" rx="5.5" fill="#E0A87F"/>
-            <rect x="42" y="22" width="116" height="32" rx="16" fill="#4A3B32"/>
-            <rect x="42" y="48" width="11" height="17" rx="5.5" fill="#4A3B32"/>
-            <rect x="147" y="48" width="11" height="17" rx="5.5" fill="#4A3B32"/>
-            <path d="M64,58 q13,-8 26,-1" stroke="#4A3B32" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-            <path d="M110,62 q13,-4 26,1" stroke="#4A3B32" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-            <ellipse cx="79" cy="80" rx="14" ry="9" fill="#F2C29B"/>
-            <ellipse cx="121" cy="80" rx="14" ry="9" fill="#F2C29B"/>
-            <ellipse cx="79" cy="92" rx="11" ry="15" fill="#FFFFFF"/>
-            <ellipse cx="121" cy="92" rx="11" ry="15" fill="#FFFFFF"/>
-            <path d="M68,79 q11,-6 22,0" stroke="#4A3B32" stroke-width="2" fill="none" stroke-linecap="round"/>
-            <path d="M110,79 q11,-6 22,0" stroke="#4A3B32" stroke-width="2" fill="none" stroke-linecap="round"/>
-            <ellipse cx="79" cy="96" rx="7.5" ry="10.5" fill="#1E1B17"/>
-            <ellipse cx="121" cy="96" rx="7.5" ry="10.5" fill="#1E1B17"/>
-            <circle cx="74.5" cy="90" r="3.5" fill="#FFFFFF"/>
-            <circle cx="83" cy="101" r="1.8" fill="#FFFFFF"/>
-            <circle cx="116.5" cy="90" r="3.5" fill="#FFFFFF"/>
-            <circle cx="125" cy="101" r="1.8" fill="#FFFFFF"/>
-            <ellipse cx="58" cy="104" rx="7" ry="4.5" fill="#D98A72" opacity="0.22"/>
-            <ellipse cx="142" cy="104" rx="7" ry="4.5" fill="#D98A72" opacity="0.22"/>
-            <ellipse cx="100" cy="104" rx="5.5" ry="5" fill="#EDB58E"/>
-            <path d="M86,116 Q100,126 114,116" stroke="#D98A72" stroke-width="3.4" fill="none" stroke-linecap="round"/>
-        </svg>
-    </div>
-    <div id="avatar-female" hidden>
-        <img src="psychologist_female.png" class="bot-avatar"
-             alt="Психолог-медиатор (женский)">
-    </div>
-    <div id="avatar-neutral" hidden>
-        <svg viewBox="0 0 64 64" role="img" aria-label="Уголок">
-            <path d="M32,54 C16,46 12,28 34,10 C54,26 50,46 32,54 Z" fill="#9CAF88"/>
-            <path d="M32,54 C32,40 32,26 33,14" stroke="#7E905F" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-        </svg>
+
+    <!-- ЕДИНЫЙ аватар персонажа для всех мест (шапка, сцена, разбор):
+         psychologist_female.png из frontend/. ?v=2 — сброс кэша браузера.
+         Мужской вариант добавим позже отдельной картинкой. -->
+    <div id="avatar-bot" hidden>
+        <img src="psychologist_female.png?v=2" class="bot-avatar"
+             alt="Психолог-медиатор">
     </div>
 
     <!-- Шапка «Наш уголок» -->
@@ -1411,27 +1356,26 @@
         let currentReadyFlag = false;
         let lastStepText = null;   // текст карточки текущей ступени
 
-        // ── Аватар персонажа: выбор шаблона по полу онбординга ──────────
-        // 'М'/male → мужской; 'Ж'/female → женский; иначе — лист.
+        // ── Аватар персонажа: ОДИН на всех (psychologist_female.png) ───
+        // Выбора по полу пока нет: мужскую картинку добавим позже.
         const AVATAR_MARKUP = {
-            male: document.getElementById("avatar-male").innerHTML,
-            female: document.getElementById("avatar-female").innerHTML,
-            neutral: document.getElementById("avatar-neutral").innerHTML,
+            bot: document.getElementById("avatar-bot").innerHTML,
         };
         let currentAvatarKind = null;
 
         function avatarKindFor(gender) {
-            if (gender === "М" || gender === "м" || gender === "male") return "male";
-            if (gender === "Ж" || gender === "ж" || gender === "female") return "female";
-            return "neutral";
+            // аргумент оставлен для совместимости вызовов — выбор по полу
+            // временно отключён, аватар один для всех
+            void gender;
+            return "bot";
         }
 
         function currentAvatarMarkup() {
-            return AVATAR_MARKUP[currentAvatarKind || "neutral"];
+            return AVATAR_MARKUP[currentAvatarKind || "bot"];
         }
 
         // Header всегда показывает выбранный шаблон; уже отрисованные
-        // карточки разбора обновляются на месте (при смене пола)
+        // карточки разбора обновляются на месте
         function setAvatarHeaderElement() {
             const header = document.getElementById("headerAvatar");
             if (header.dataset.current !== currentAvatarKind) {
