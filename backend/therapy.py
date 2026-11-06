@@ -86,6 +86,43 @@ def next_after_owner_answer(step: str) -> str | None:
     return _AFTER_OWNER_ANSWER.get(step)
 
 
+def get_step_recipient(
+    step: str,
+    session_id: int,
+    creator_id: int,
+    partner_id: int | None,
+) -> int | None:
+    """Кому адресован вопрос текущей ступени (Telegram ID) — без запросов в БД.
+
+    - ступень _A адресована партнёру 1 (создателю сессии);
+    - ступень _B адресована партнёру 2;
+    - Озеро/Интеграция и любой другой шаг — общий (None), видят оба.
+
+    Пустой step — адресата нет (шага ещё не существует).
+    """
+    if not step:
+        return None
+    if step.endswith("_A"):
+        return creator_id
+    if step.endswith("_B"):
+        return partner_id
+    return None
+
+
+def question_recipient(step: str, session_id: int, partner_id: int | None) -> int | None:
+    """Telegram ID того, КОМУ адресован текст текущей ступени.
+
+    Ступени _A/_B приватны: их вопрос адресован конкретному партнёру
+    (A — создателю сессии, B — подключённому партнёру). При None — текст
+    открыт обоим (Озеро, Интеграция) или ступень нестандартна.
+    Явно используется /api/history, чтобы не «сливать» вопрос второму
+    партнёру в Mini App.
+    """
+    return get_step_recipient(
+        step, session_id, creator_id=session_id, partner_id=partner_id
+    )
+
+
 def next_after_lake(step: str) -> str | None:
     """Ступень за Озером (нужны оба «Дальше»); None — водопад кончился."""
     return _AFTER_LAKE.get(step)

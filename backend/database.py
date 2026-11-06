@@ -410,6 +410,21 @@ async def delete_session(session_id: int) -> None:
         await conn.commit()
 
 
+async def get_session_creator(session_id: int) -> int | None:
+    """Telegram ID создателя сессии (партнёра 1).
+
+    Архитектура: идентификатор сессии = Telegram ID создателя (сессию
+    заводит первый участник). Функция подтверждает это по таблице users
+    и возвращает None, если такой участник уже не существует.
+    """
+    async with _connect() as conn:
+        cursor = await conn.execute(
+            "SELECT id FROM users WHERE id = ?", (session_id,)
+        )
+        row = await cursor.fetchone()
+        return row[0] if row else None
+
+
 async def get_current_step(session_id: int) -> str | None:
     """Ступень «Водопада» для сессии или None, если он ещё не запущен."""
     async with _connect() as conn:

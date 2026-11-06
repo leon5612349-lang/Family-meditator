@@ -872,16 +872,30 @@ async def get_history(
         session_id, after_id=max(0, after_id)
     )
     step = await database.get_current_step(session_id)
-    # «Водопад»: текст текущей ступени (вопрос/озеро) — Mini App рисует его
-    # как карточку в чате, чтобы вопросы бота были видны и на сайте
-    step_text = (await therapy.prompt_text_for(step, session_id)) if step else None
+    step_text = None
+    masked = False
+    addressed_to = None
+    if step:
+        creator_id = await database.get_session_creator(session_id)
+        attendee_of_creator = await database.get_session_partner(session_id, session_id)
+        addressed_to = therapy.get_step_recipient(
+            step, session_id, creator_id, attendee_of_creator
+        )
+        if addressed_to is None or addressed_to == uid:
+            step_text = await therapy.prompt_text_for(step, session_id)
+        else:
+            masked = True  # текст приватного вопроса не покидает сервер
     ready = bool(info and info.get("is_ready_for_next"))
     return JSONResponse(
         {
             "messages": messages,
             "profile_ready": profile_ready,
             "step": step,
+            # Новые поля: текущий шаг и его адресат (None — шаг общий)
+            "current_step": step,
+            "addressed_to": addressed_to,
             "step_text": step_text,
+            "masked": masked,
             "ready": ready,
             # Пол пользователя из онбординга — аватар персонажа в Mini App
             "gender": (info or {}).get("gender"),

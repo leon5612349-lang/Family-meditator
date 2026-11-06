@@ -348,6 +348,15 @@
 
         input.input::placeholder { color: var(--text-muted); }
 
+        /* Поле заблокировано: сейчас ход партнёра — гасим ввод */
+        input.input.locked {
+            background-color: var(--surface-alt);
+            color: var(--text-muted);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        input.input.locked::placeholder { color: var(--text-muted); opacity: 0.85; }
+
         input.input:focus {
             border-color: var(--accent);
         }
@@ -910,6 +919,60 @@
             font-weight: 700;
             letter-spacing: 0.2px;
             color: var(--sage-deep);
+        /* ── Экран «Сессия завершена» (410 от API при удалённой сессии) ── */
+        .over-screen {
+            position: absolute;
+            inset: 0;
+            z-index: 40;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg);
+        }
+
+        .over-card {
+            text-align: center;
+            background: var(--surface);
+            border-radius: var(--radius);
+            padding: 26px 24px;
+            box-shadow: 0 4px 0 color-mix(in srgb, var(--accent-deep) 35%, transparent);
+            max-width: 320px;
+        }
+
+        .over-title {
+            font-family: var(--font-title);
+            font-size: 21px;
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .over-text {
+            font-family: var(--font-body);
+            font-size: 14px;
+            color: var(--text-muted);
+            margin: 10px 0 18px;
+            line-height: 1.5;
+        }
+
+        .over-btn {
+            width: 100%;
+            padding: 13px 18px;
+            border: none;
+            border-radius: var(--radius);
+            background: var(--accent-deep);
+            color: #FFFFFF;
+            font-family: var(--font-title);
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #A65B43;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+
+        .over-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #A65B43;
         }
     </style>
 </head>
@@ -1136,6 +1199,18 @@
     </main>
 
     <!-- «Водопад»: кнопка движения дальше — видна только на Озере -->
+
+    <!-- Экран «сессия завершена» (показывается на 410 от API) -->
+    <div class="over-screen" id="overScreen" hidden>
+        <div class="over-card">
+            <div class="over-title">Сессия завершена</div>
+            <div class="over-text">Пара молчала слишком долго. Начните заново,
+                когда будете готовы.</div>
+            <button class="over-btn" id="overRestart" type="button">
+                Начать заново
+            </button>
+        </div>
+    </div>
 
     <!-- Поле ввода -->
     <form class="input-bar" id="sendForm">
@@ -1386,11 +1461,57 @@
         // при загрузке — нейтральный лист (gender ещё не подтянулся)
         setAvatar("");
 
-        function renderStepCard(stepText) {
+        // ── Сессия гашеная: экран «Сессия завершена» на 410 от API ──────
+        let sessionGone = false;
+
+        function showGoneScreen() {
+            if (sessionGone) return;
+            sessionGone = true;
+            clearInterval(historyTimer);
+            document.getElementById("overScreen").hidden = false;
+            document.getElementById("overScreen").classList.add("show");
+            // сцена/кнопки/похвала погасены, чтобы не путать
+            const st = document.getElementById("stage");
+            if (st) st.hidden = true;
+            const lb = document.getElementById("lakeBar");
+            if (lb) lb.hidden = true;
+            resetTypingLabel();
+        }
+
+        document.getElementById("overRestart").addEventListener("click", () => {
+            if (tg) tg.openTelegramLink("https://t.me/EcoTalkSpace_bot");
+            else window.open("https://t.me/EcoTalkSpace_bot", "_blank");
+        });
+
+        function isGoneResponse(res, data) {
+            return res.status === 410 || data.gone === true;
+        }
+
+        // masked: партнёру вопрос не адресован — показываем только плашку
+        // «Сейчас отвечает ваш партнёр…» (текст вопроса с сервера не приходит)
+        function renderStepCard(stepText, masked) {
             const stage = document.getElementById("stage");
             const titleEl = document.getElementById("stepTitle");
             const speechEl = document.getElementById("speechText");
             const fill = document.getElementById("progressFill");
+
+            // Ветка «ход партнёра» идёт ПЕРВОЙ: сервер не присылает текст
+            // вопроса не-адресату (step_text = null), поэтому общего
+            // «нет текста → спрятать сцену» здесь быть не должно.
+            if (masked) {
+                if (lastStepText === "MASKED") return;  // без мерцания
+                lastStepText = "MASKED";
+                setAvatarHeaderElement();
+                titleEl.textContent = "";
+                speechEl.textContent =
+                    "Сейчас отвечает ваш партнёр. Пожалуйста, подождите…";
+                const num = /CASCADE_(\d+)/.exec(String(currentStep) || "");
+                fill.style.width = num ? Math.round((+num[1] / 5) * 100) + "%" : "0%";
+                stage.hidden = false;
+                chat.scrollTop = 0;
+                return;
+            }
+
             if (!stepText) {
                 stage.hidden = true;
                 lastStepText = null;
@@ -1400,8 +1521,11 @@
             // Пол из /api/history уже мог сменить шаблон — на сцене всегда
             // свежий аватар (sync при каждом переходе)
             setAvatarHeaderElement();
-            if (stepText === lastStepText) return;  // без мерцания
-            lastStepText = stepText;
+            // ключ мерцания учитывает маску: у партнёра своя плашка
+            const flickerKey = (masked ? "M:" : "") + stepText;
+            if (flickerKey === lastStepText) return;
+            lastStepText = flickerKey;
+
             // формат строки: "🌿 Шаг N. Название\n\nТекст ступени"
             const sep = stepText.indexOf("\n\n");
             let label = sep > 0 ? stepText.slice(0, sep) : stepText;
@@ -1508,6 +1632,7 @@
                     body: JSON.stringify(payload),
                 });
                 const data = await res.json();
+                if (isGoneResponse(res, data)) { showGoneScreen(); return; }
                 if (data.status === "advanced") {
                     // новый каскад: сервер уже разослал вопросы обеим в Telegram
                     currentStep = data.step;
@@ -1593,10 +1718,33 @@
             return auth + "&after_id=" + encodeURIComponent(maxHistoryId);
         }
 
+        // «Водопад»: чей сейчас ход. Если вопрос адресован партнёру —
+        // поле ввода, кнопка «ОТПРАВИТЬ» и микрофон заблокированы.
+        function setComposerLocked(locked) {
+            const input = document.getElementById("messageInput");
+            const sendBtn = document.getElementById("sendBtn");
+            const micBtn = document.getElementById("micBtn");
+            input.disabled = locked;
+            micBtn.disabled = locked;
+            input.classList.toggle("locked", locked);
+            if (locked) {
+                sendBtn.disabled = true;
+                sendBtn.classList.remove("ready");
+                input.placeholder = "Сейчас ход партнёра";
+                input.title = "Сейчас отвечает ваш партнёр";
+            } else {
+                sendBtn.disabled = !input.value.trim();
+                input.placeholder = "Напишите, что чувствуете...";
+                input.title = "";
+            }
+        }
+
         async function fetchHistory() {
             try {
                 const res = await fetch("/api/history?" + getHistoryQuery());
                 const data = await res.json();
+                // Сессия удалена по тайм-ауту — экран «Сессия завершена»
+                if (isGoneResponse(res, data)) { showGoneScreen(); return; }
                 // Онбординг: подсказка знакомства видна, пока профиль пуст
                 if (typeof data.profile_ready === "boolean") {
                     applyProfileReady(data.profile_ready);
@@ -1626,8 +1774,20 @@
                         showPraise("Вы молодцы! Продолжайте в том же духе 💚");
                     }
                 }
-                // вопросы бота видны и в Mini App: карточка текущей ступени
-                renderStepCard(data.step_text || null);
+                // вопросы бота видны и в Mini App: карточка текущей ступени.
+                // Адресат шага (current_step + addressed_to) решает, чей это
+                // вопрос: свой — рисуем текст, чужой — плашку без спойлеров
+                // и блокируем поле ввода.
+                const addressedTo = (typeof data.addressed_to !== "undefined")
+                    ? data.addressed_to
+                    : null;
+                const myTurn = addressedTo === null
+                    || addressedTo === getCurrentUserId();
+                setComposerLocked(!myTurn);
+                renderStepCard(
+                    data.step_text || null,
+                    !myTurn || data.masked === true
+                );
                 // Первый проход при загрузке: если история уже есть в базе,
                 // экран скрывается СРАЗУ (без анимации), не дожидаясь отрисовки
                 if (!firstHistoryChecked) {
@@ -1707,6 +1867,7 @@
                     body: JSON.stringify({...payload, text: text}),
                 });
                 const data = await res.json();
+                if (isGoneResponse(res, data)) { showGoneScreen(); return; }
                 if (data.blocked) {
                     // Система безопасности: сообщение не отправлено партнёру —
                     // рисуем только жёсткий ответ сервера
@@ -1807,6 +1968,7 @@
 
                     const res = await fetch("/api/send_voice", { method: "POST", body: form });
                     const data = await res.json();
+                    if (isGoneResponse(res, data)) { showGoneScreen(); return; }
                     if (data.blocked) {
                         addMessage(data.message, "in", "Система безопасности");
                     } else if (data.rephrased) {
