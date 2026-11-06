@@ -111,6 +111,11 @@ async def init_db() -> None:
             )
             """
         )
+        # B2 из аудита: get_session_partner / get_cascade_readiness ищут по
+        # users.session_id — без индекса это full scan на каждом запросе
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_users_session ON users(session_id)"
+        )
         # S4: индекс под частый запрос /api/history (иначе — full scan
         # всей таблицы на каждый тик опроса)
         await conn.execute(
@@ -438,6 +443,43 @@ async def set_ready_for_next(user_id: int, value: bool) -> None:
             (1 if value else 0, user_id),
         )
         await conn.commit()
+
+
+async def claim_lake_advance(
+    session_id: int, expected_step: str, new_step: str
+) -> bool:
+    """Атомарный захват перехода из Озера на следующий каскад.
+
+    Переход выполняет ОДИН UPDATE sessions, который срабатывает только
+    если: текущий шаг всё ещё expected_step И оба партнёра отметили
+    готовность (флаги is_ready_for_next в users). Победитель — тот, у
+    кого cursor.rowcount == 1; второй (гонка «Дальше» в боте и в Mini
+    App) получает False и обязан молча выйти, не рассылая вопросы заново
+    и не меняя шаг второй раз.
+
+    Сброс флагов готовности — в той же транзакции и только победителем,
+    поэтому «Дальше» второй раз нельзя «переиграть».
+    """
+    async with _connect() as conn:
+        cursor = await conn.execute(
+            """
+            UPDATE sessions
+            SET current_step = ?
+            WHERE session_id = ?
+              AND current_step = ?
+              AND (SELECT COUNT(*) FROM users
+                   WHERE session_id = ? AND is_ready_for_next = 1) >= 2
+            """,
+            (new_step, session_id, expected_step, session_id),
+        )
+        claimed = cursor.rowcount == 1
+        if claimed:
+            await conn.execute(
+                "UPDATE users SET is_ready_for_next = 0 WHERE session_id = ?",
+                (session_id,),
+            )
+        await conn.commit()
+        return claimed
 
 
 async def get_cascade_readiness(session_id: int) -> tuple[int, int]:

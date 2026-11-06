@@ -248,28 +248,39 @@ async def maybe_advance(session_id: int, sender_id: int, bot) -> str | None:
 
 
 async def try_advance_from_lake(session_id: int, bot) -> str | None:
-    """Пробует пройти с Озера: если оба нажали «Дальше» — переходит дальше.
+    """Проход из Озера к следующему каскаду: оба нажали «Дальше».
 
-    Сбрасывает флаги is_ready_for_next. Возвращает новую ступень или None,
-    если партнёр ещё не нажал.
+    Переход АТОМАРНЫЙ: database.claim_lake_advance одним UPDATE sessions
+    захватывает право перехода (условия: шаг всё ещё ожидаемый + оба
+    флага готовности). Проигравший гонку (например, «Дальше» в боте и
+    в Mini App одновременно) получает False и молча выходит — без
+    enter_step и без повторной рассылки вопросов.
+
+    Возвращает новую ступень или None (партнёр ещё не нажал / гонка
+    проиграна / озера не было).
     """
     import database  # flat-import стиль проекта
 
+    # 1) текущий шаг и готовность обоих
     step = await database.get_current_step(session_id)
     if not is_lake(step):
         return None
+
     ready, total = await database.get_cascade_readiness(session_id)
     if ready < 2 or total < 2:
         return None
 
+    # 2) следующий каскад по машине состояний
     new_step = next_after_lake(step)
     if new_step is None:
         return None
 
-    await database.set_ready_for_next(session_id, False)
-    partner = await database.get_session_partner(session_id, session_id)
-    if partner is not None:
-        await database.set_ready_for_next(partner, False)
-    await database.set_current_step(session_id, new_step)
+    # 3) атомарный захват перехода
+    claimed = await database.claim_lake_advance(session_id, step, new_step)
+    if not claimed:
+        # кто-то уже перевёл сессию — молча выходим
+        return None
+
+    # 4) мы победили: рассылаем подсказки новой ступени
     await enter_step(session_id, new_step, bot)
     return new_step
