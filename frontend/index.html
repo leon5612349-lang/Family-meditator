@@ -901,6 +901,8 @@
             font-weight: 700;
             letter-spacing: 0.2px;
             color: var(--sage-deep);
+        }
+
         /* ── Экран «Сессия завершена» (410 от API при удалённой сессии) ── */
         .over-screen {
             position: absolute;
@@ -956,6 +958,294 @@
             transform: translateY(3px);
             box-shadow: 0 1px 0 #A65B43;
         }
+        /* ── ПАЛИТРА И КОМПОНЕНТЫ v0 (Closer): персиково-коралловая
+           ─────────────────────────────────────────────────────────
+           Стиль взят из эталона _reference_v0.html и перенесён на наши
+           классы. Палитра задана и для :root, и для [data-theme="dark"]
+           (тема в приложении принудительно тёмная) — поэтому переопределяем
+           обе: иначе остались бы тёмные токены.
+           ═══════════════════════════════════════════════════════════ */
+
+        /* Атрибут hidden должен побеждать любые display-правила ниже
+           (иначе .over-screen/.typing с display:flex висели бы всегда) */
+        [hidden] { display: none !important; }
+
+        :root,
+        [data-theme="dark"] {
+            --bg: #FFF5F0;                 /* кремово-персиковый */
+            --bg-gradient-end: #FFE8DC;
+            --bg-chat: #FFF9F5;
+            --surface: #FFFFFF;
+            --surface-alt: #F5E6F0;        /* розовый для входящих */
+            --text: #2E2A27;
+            --text-muted: #8A7D74;
+            --accent: #FF6B4A;             /* коралл */
+            --accent-deep: #E85A3A;
+            --accent-text: #FFFFFF;
+            --accent-soft: rgba(255, 107, 74, 0.12);
+            --coral: #FF6B4A;
+            --coral-hover: #E85A3A;
+            --card: #FFFFFF;
+            --peach: #FFE8DC;
+            --pink: #F5E6F0;
+            --sage: #9CAF88;
+            --sage-soft: #EFF3EA;
+            --sage-deep: #7E905F;
+            --line: rgba(46, 42, 39, 0.08);
+            --dot: rgba(46, 42, 39, 0.05);
+            --shadow: 0 4px 16px rgba(46, 42, 39, 0.08);
+            --shadow-deep: 0 6px 18px rgba(255, 107, 74, 0.25);
+            --radius: 24px;
+            --radius-sm: 16px;
+            --font-body: 'Nunito', system-ui, sans-serif;
+            --font-title: 'Comfortaa', 'Nunito', system-ui, sans-serif;
+            --font-display: 'Comfortaa', 'Nunito', system-ui, sans-serif;
+        }
+
+        /* Фон приложения: мягкий персиковый градиент сверху вниз */
+        body {
+            background: linear-gradient(
+                180deg,
+                var(--bg) 0%,
+                var(--bg-gradient-end) 100%
+            );
+            background-attachment: fixed;
+            color: var(--text);
+            font-family: var(--font-body);
+        }
+
+        .header,
+        .input-bar,
+        .finish-bar {
+            background-color: transparent;
+        }
+
+        .header { border-bottom: none; }
+
+        .input-bar { border-top: none; }
+
+        /* Кнопки-таблетки из v0 */
+        .send-huge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            min-height: 56px;
+            padding: 16px;
+            border: 0;
+            border-radius: 24px;
+            font-family: var(--font-display);
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: 0.4px;
+            color: #FFFFFF;
+            background: var(--coral);
+            box-shadow: 0 4px 0 var(--coral-hover);
+            cursor: pointer;
+            transition: transform 0.16s ease, background-color 0.16s ease,
+                        box-shadow 0.16s ease;
+        }
+
+        .send-huge svg {
+            width: 17px;
+            height: 17px;
+            flex: 0 0 auto;
+        }
+
+        .send-huge.ready {
+            background: var(--coral);
+            color: #FFFFFF;
+            box-shadow: 0 4px 0 var(--coral-hover);
+        }
+
+        .send-huge:disabled {
+            background: #E8DED6;
+            color: #A7968C;
+            box-shadow: 0 4px 0 #DCCFC5;
+            cursor: default;
+        }
+
+        .send-huge:active.ready {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 var(--coral-hover);
+        }
+
+        /* «Завершить сессию» — ghost-кнопка из v0 */
+        .finish-btn {
+            background: transparent;
+            border: 1.5px solid var(--coral);
+            color: var(--coral);
+            box-shadow: none;
+            font-family: var(--font-display);
+            font-weight: 800;
+        }
+
+        .finish-btn:hover {
+            background: var(--coral);
+            color: #FFFFFF;
+        }
+
+        .finish-btn:active {
+            transform: translateY(2px);
+            box-shadow: none;
+        }
+
+        /* Пузыри сообщений: коралл (свои) и розовый (партнёра) */
+        .bubble {
+            box-shadow: 0 4px 16px rgba(46, 42, 39, 0.06);
+            font-family: var(--font-body);
+        }
+
+        .bubble.out {
+            background: var(--coral);
+            color: #FFFFFF;
+            border-bottom-right-radius: 4px;
+            border-top-right-radius: 20px;
+            border-top-left-radius: 20px;
+            border-bottom-left-radius: 20px;
+        }
+
+        .bubble.in {
+            background: var(--pink);
+            color: var(--text);
+            border: none;
+            border-top-right-radius: 20px;
+            border-top-left-radius: 20px;
+            border-bottom-right-radius: 20px;
+            border-bottom-left-radius: 4px;
+        }
+
+        .bubble .label { color: inherit; opacity: 0.7; }
+
+        /* Карточка вопроса (облачко) — белая, с тенью */
+        .speech {
+            background: var(--card);
+            border-radius: 20px;
+            padding: 13px 14px;
+            box-shadow: 0 4px 16px rgba(46, 42, 39, 0.08);
+        }
+
+        .speech::before { border-right-color: var(--card); }
+
+        /* Иллюстрация «пара с сердечком» над вопросом */
+        .chat-illustration {
+            width: 100%;
+            max-height: 180px;
+            margin: 4px 0 12px;
+            border-radius: 24px;
+            overflow: hidden;
+            display: grid;
+            place-items: center;
+        }
+
+        .chat-illustration img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        /* Поле ввода — белая «пилюля» */
+        input.input {
+            min-height: 58px;
+            background-color: var(--card);
+            border-radius: 999px;
+            padding: 14px 22px;
+            box-shadow: 0 4px 16px rgba(46, 42, 39, 0.08);
+            font-family: var(--font-body);
+        }
+
+        input.input:focus { border-color: var(--coral); }
+
+        input.input.locked {
+            background-color: #F1EAE4;
+            box-shadow: none;
+        }
+
+        /* Кнопка микрофона — коралловый круг, как send-button в v0 */
+        .mic-btn {
+            width: 46px;
+            height: 46px;
+            background: var(--coral);
+            color: #FFFFFF;
+            box-shadow: 0 3px 0 var(--coral-hover);
+        }
+
+        .mic-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 var(--coral-hover);
+        }
+
+        /* «Дальше» по Озеру — шалфейная таблетка */
+        .lake-btn {
+            min-height: 56px;
+            padding: 16px;
+            border-radius: 24px;
+            font-family: var(--font-display);
+            font-weight: 800;
+            background: var(--sage);
+            color: #FFFFFF;
+            box-shadow: 0 4px 0 var(--sage-deep);
+        }
+
+        /* Заголовки — Comfortaa */
+        .step-title,
+        .header-title,
+        .welcome-title {
+            font-family: var(--font-display);
+            font-weight: 700;
+            letter-spacing: -0.03em;
+        }
+
+        .step-title {
+            font-size: clamp(23px, 6.4vw, 28px);
+            line-height: 1.24;
+        }
+
+        /* Прочие поверхности под новую палитру */
+        .analysis-card {
+            background: var(--card);
+            box-shadow: 0 4px 16px rgba(46, 42, 39, 0.08);
+        }
+
+        .analysis-card .label { color: var(--sage-deep); }
+
+        .system-message {
+            color: var(--text-muted);
+            border: 1px dashed var(--line);
+            background: rgba(255, 255, 255, 0.55);
+        }
+
+        .summary {
+            background: var(--card);
+            box-shadow: 0 4px 16px rgba(46, 42, 39, 0.08);
+        }
+
+        .over-card {
+            background: var(--card);
+            box-shadow: 0 4px 16px rgba(46, 42, 39, 0.08);
+        }
+
+        .over-btn {
+            background: var(--coral);
+            box-shadow: 0 4px 0 var(--coral-hover);
+        }
+
+        .over-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 var(--coral-hover);
+        }
+
+        .praise {
+            background: var(--sage);
+            color: #FFFFFF;
+            box-shadow: 0 4px 0 var(--sage-deep);
+        }
+
+        /* Аватары персонажа: белая рамка, как в v0 */
+        .bot-avatar {
+            border: 2px solid #FFFFFF;
+        }
     </style>
 </head>
 <body>
@@ -1001,6 +1291,10 @@
 
         <!-- ══ Сцена «Водопада»: персонаж + облачко ═══════════════ -->
         <section class="stage" id="stage" hidden>
+            <!-- Иллюстрация «пара с сердечком» над заголовком вопроса (стиль v0) -->
+            <div class="chat-illustration" role="img" aria-label="Пара с сердечком">
+                <img src="couple_chat.png" alt="Пара с сердечком" />
+            </div>
             <div class="step-title" id="stepTitle"></div>
             <div class="stage-row">
                 <div class="mascot-wrap">
@@ -1173,7 +1467,13 @@
             </button>
         </div>
         <button class="send-huge" id="sendBtn" type="submit" disabled>
-            ОТПРАВИТЬ
+            <!-- бумажный самолётик, как в эталоне v0 -->
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M21 3 10.5 13.5M21 3l-6.5 18-4-8-8-4L21 3Z"
+                      stroke="currentColor" stroke-width="1.8"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>ОТПРАВИТЬ</span>
         </button>
     </form>
 

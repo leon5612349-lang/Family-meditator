@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FFF5F0">
+  <meta name="description" content="A gentle relationship app for building connection into a daily habit.">
+  <title>Closer — Make connection a daily habit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #FFF5F0;
+      --bg-gradient-end: #FFE8DC;
+      --coral: #FF6B4A;
+      --coral-hover: #E85A3A;
+      --text: #2E2A27;
+      --text-soft: #8A7D74;
+      --card: #FFFFFF;
+      --peach: #FFE8DC;
+      --pink: #F5E6F0;
+      --sage: #9CAF88;
+      --shadow: 0 4px 16px rgba(46, 42, 39, 0.08);
+      --font-body: 'Nunito', system-ui, sans-serif;
+      --font-display: 'Comfortaa', 'Nunito', system-ui, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-width: 320px;
+      scroll-behavior: smooth;
+      scroll-padding-top: env(safe-area-inset-top);
+    }
+
+    body {
+      min-width: 320px;
+      margin: 0;
+      color: var(--text);
+      background: linear-gradient(180deg, var(--bg) 0%, var(--bg-gradient-end) 100%);
+      font-family: var(--font-body);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    button:focus {
+      outline: none;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    a:focus-visible {
+      outline: 3px solid rgba(255, 107, 74, 0.5);
+      outline-offset: 3px;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .app-shell {
+      width: min(100%, 430px);
+      min-height: 100svh;
+      margin: 0 auto;
+      overflow: hidden;
+      background: linear-gradient(180deg, var(--bg) 0%, var(--bg-gradient-end) 100%);
+      box-shadow: 0 0 36px rgba(76, 48, 36, 0.08);
+    }
+
+    .screen {
+      min-height: 100svh;
+      padding: max(22px, env(safe-area-inset-top)) 22px max(22px, env(safe-area-inset-bottom));
+      scroll-margin-top: 0;
+    }
+
+    .welcome-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .welcome-topbar {
+      display: flex;
+      width: 100%;
+      min-height: 42px;
+      justify-content: flex-end;
+      align-items: flex-start;
+    }
+
+    .skip-button {
+      min-height: 38px;
+      padding: 0 17px;
+      border: 0;
+      border-radius: 999px;
+      color: var(--coral);
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 3px 12px rgba(46, 42, 39, 0.08);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 160ms ease, background-color 160ms ease;
+    }
+
+    .skip-button:hover {
+      background: var(--card);
+    }
+
+    .skip-button:active,
+    .action-button:active,
+    .icon-button:active,
+    .send-button:active,
+    .favorite-button:active {
+      transform: scale(0.98);
+    }
+
+    .illustration-placeholder {
+      position: relative;
+      display: grid;
+      width: min(80vw, 300px);
+      aspect-ratio: 1;
+      flex: 0 0 auto;
+      place-items: center;
+      margin: clamp(14px, 3vh, 28px) 0 16px;
+      overflow: hidden;
+      border-radius: 42px;
+      background:
+        radial-gradient(ellipse at 50% 44%, rgba(255, 255, 255, 0.96) 0 11%, transparent 12%),
+        radial-gradient(circle at 53% 42%, rgba(255, 181, 149, 0.48), transparent 55%),
+        radial-gradient(circle at 22% 78%, rgba(255, 212, 194, 0.75), transparent 42%),
+        linear-gradient(145deg, #FFF0E9, #F9D8C9);
+    }
+
+    .illustration-placeholder::before,
+    .illustration-placeholder::after {
+      position: absolute;
+      width: 210px;
+      height: 210px;
+      border: 1px solid rgba(255, 107, 74, 0.12);
+      border-radius: 50%;
+      content: '';
+    }
+
+    .illustration-placeholder::after {
+      width: 260px;
+      height: 260px;
+      border-color: rgba(255, 255, 255, 0.55);
+    }
+
+    .placeholder-label {
+      z-index: 1;
+      padding: 9px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 999px;
+      color: #9C6B58;
+      background: rgba(255, 255, 255, 0.42);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .welcome-copy {
+      width: 100%;
+      text-align: center;
+    }
+
+    .welcome-copy h1 {
+      max-width: 340px;
+      margin: 0 auto 10px;
+      font-family: var(--font-display);
+      font-size: clamp(28px, 8vw, 35px);
+      font-weight: 700;
+      line-height: 1.22;
+      letter-spacing: -0.055em;
+    }
+
+    .welcome-copy h1 span {
+      display: inline-block;
+      color: var(--coral);
+    }
+
+    .welcome-copy p {
+      max-width: 300px;
+      margin: 0 auto;
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .signup-area {
+      width: 100%;
+      margin-top: auto;
+      padding-top: clamp(24px, 5vh, 42px);
+    }
+
+    .signup-form {
+      display: grid;
+      gap: 10px;
+    }
+
+    .action-button {
+      display: flex;
+      width: 100%;
+      min-height: 56px;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      border: 0;
+      border-radius: 24px;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .action-button svg {
+      width: 17px;
+      height: 17px;
+      flex: 0 0 auto;
+    }
+
+    .primary-button {
+      color: #fff;
+      background: var(--coral);
+      box-shadow: 0 5px 12px rgba(232, 90, 58, 0.19);
+    }
+
+    .primary-button:hover {
+      background: var(--coral-hover);
+    }
+
+    .secondary-button {
+      color: #171514;
+      background: var(--card);
+      box-shadow: var(--shadow);
+    }
+
+    .secondary-button:hover {
+      background: #FFFCFA;
+    }
+
+    .legal-copy {
+      max-width: 290px;
+      margin: 13px auto 0;
+      color: var(--text-soft);
+      font-size: 10px;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .legal-copy a {
+      color: var(--coral-hover);
+      text-decoration: none;
+    }
+
+    .screen-link {
+      display: inline-flex;
+      min-height: 42px;
+      align-items: center;
+      justify-content: center;
+      margin-top: 4px;
+      color: #9A6654;
+      font-size: 12px;
+      font-weight: 800;
+      text-decoration: none;
+    }
+
+    .chat-screen {
+      display: flex;
+      flex-direction: column;
+      padding-top: max(16px, env(safe-area-inset-top));
+    }
+
+    .chat-topbar {
+      display: flex;
+      min-height: 48px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .icon-button {
+      display: inline-grid;
+      width: 44px;
+      height: 44px;
+      flex: 0 0 auto;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.62);
+      cursor: pointer;
+      transition: transform 160ms ease, background-color 160ms ease;
+    }
+
+    .icon-button:hover {
+      background: #fff;
+    }
+
+    .icon-button svg {
+      width: 19px;
+      height: 19px;
+    }
+
+    .question-heading {
+      margin: 2px 0 13px;
+      font-family: var(--font-display);
+      font-size: clamp(23px, 6.4vw, 28px);
+      font-weight: 700;
+      line-height: 1.24;
+      letter-spacing: -0.045em;
+    }
+
+    .relationship-tip {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 13px 14px;
+      border-radius: 17px;
+      background: var(--peach);
+    }
+
+    .tip-icon {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--coral);
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .tip-icon svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .relationship-tip h2 {
+      margin: 1px 0 3px;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.3;
+    }
+
+    .relationship-tip p {
+      margin: 0;
+      color: var(--text-soft);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .chat-history {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      gap: 13px;
+      min-height: 160px;
+      padding: 20px 0 12px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(156, 175, 136, 0.55) transparent;
+    }
+
+    .message-row {
+      display: flex;
+      max-width: 100%;
+      align-items: flex-end;
+      gap: 8px;
+    }
+
+    .message-row.outgoing {
+      align-self: flex-end;
+      flex-direction: row;
+    }
+
+    .message-row.incoming {
+      align-self: flex-start;
+      flex-direction: row;
+    }
+
+    .avatar {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      flex: 0 0 28px;
+      place-items: center;
+      overflow: hidden;
+      border: 2px solid rgba(255, 255, 255, 0.85);
+      border-radius: 50%;
+      color: #fff;
+      background: var(--sage);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .outgoing .avatar {
+      background: #C77D68;
+    }
+
+    .message-bubble {
+      max-width: min(78%, 275px);
+      padding: 12px 15px;
+      font-size: 13px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .outgoing .message-bubble {
+      border-radius: 20px 20px 4px 20px;
+      color: #fff;
+      background: var(--coral);
+    }
+
+    .incoming .message-bubble {
+      border-radius: 20px 20px 20px 4px;
+      color: var(--text);
+      background: var(--pink);
+    }
+
+    .favorite-row {
+      display: flex;
+      justify-content: center;
+      padding: 2px 0 5px;
+    }
+
+    .favorite-button {
+      display: inline-flex;
+      min-height: 36px;
+      align-items: center;
+      gap: 6px;
+      padding: 0 13px;
+      border: 1px solid rgba(255, 107, 74, 0.48);
+      border-radius: 999px;
+      color: var(--coral-hover);
+      background: rgba(255, 255, 255, 0.85);
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 160ms ease, background-color 160ms ease;
+    }
+
+    .favorite-button:hover {
+      background: #fff;
+    }
+
+    .favorite-button svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .chat-composer {
+      display: flex;
+      min-height: 58px;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 7px 7px 15px;
+      border: 1px solid rgba(46, 42, 39, 0.04);
+      border-radius: 999px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+    }
+
+    .chat-composer input {
+      width: 100%;
+      min-width: 0;
+      min-height: 42px;
+      padding: 0;
+      border: 0;
+      outline: none;
+      color: var(--text);
+      background: transparent;
+      font-size: 14px;
+    }
+
+    .chat-composer input::placeholder {
+      color: #A99D96;
+    }
+
+    .composer-icon {
+      width: 42px;
+      height: 42px;
+      color: var(--text-soft);
+      background: transparent;
+    }
+
+    .composer-icon svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .send-button {
+      display: grid;
+      width: 44px;
+      height: 44px;
+      flex: 0 0 auto;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--coral);
+      cursor: pointer;
+      transition: transform 160ms ease, background-color 160ms ease;
+    }
+
+    .send-button:hover {
+      background: var(--coral-hover);
+    }
+
+    .send-button svg {
+      width: 19px;
+      height: 19px;
+    }
+
+    @media (min-width: 431px) {
+      .app-shell {
+        border-right: 1px solid rgba(46, 42, 39, 0.04);
+        border-left: 1px solid rgba(46, 42, 39, 0.04);
+      }
+    }
+
+    @media (max-height: 700px) {
+      .illustration-placeholder {
+        width: min(68vw, 245px);
+        margin-top: 8px;
+        margin-bottom: 11px;
+        border-radius: 34px;
+      }
+
+      .welcome-copy h1 {
+        font-size: 29px;
+      }
+
+      .signup-area {
+        padding-top: 20px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+          /* --- Real illustrations (instead of v0.dev placeholders) ------ */
+        .illustration-image {
+            width: min(80vw, 300px);
+            aspect-ratio: 1;
+            margin: clamp(14px, 3vh, 28px) 0 16px;
+            border-radius: 42px;
+            overflow: hidden;
+            display: grid;
+            place-items: center;
+        }
+        .illustration-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .chat-illustration {
+            width: 100%;
+            max-height: 180px;
+            margin: 4px 0 12px;
+            border-radius: 24px;
+            overflow: hidden;
+            display: grid;
+            place-items: center;
+        }
+        .chat-illustration img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        /* --- Avatars in bubbles --------------------------------------- */
+        .avatar {
+            width: 32px;
+            height: 32px;
+            flex: 0 0 32px;
+            border-radius: 50%;
+            border: 2px solid #FFFFFF;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-body, "Nunito", sans-serif);
+            font-size: 12px;
+            font-weight: 700;
+            color: #FFFFFF;
+        }
+        .outgoing .avatar { background: #C77D68; }
+        .incoming .avatar { background: #9CAF88; }
+</style>
+</head>
+<body>
+  <main class="app-shell">
+    <section class="screen welcome-screen" id="welcome" aria-labelledby="welcome-heading">
+      <header class="welcome-topbar">
+        <button class="skip-button" id="skip-button" type="button">Skip</button>
+      </header>
+
+      <div class="illustration-image" role="img" aria-label="Para smotrit na telefon vmeste">
+    <img src="couple_welcome.png" alt="Para smotrit na telefon vmeste" />
+</div>
+
+
+      <div class="welcome-copy">
+        <h1 id="welcome-heading">Make connection <span>a daily habit</span></h1>
+        <p>Dedicate a little time each day to connect with each other through quick, daily conversations.</p>
+      </div>
+
+      <div class="signup-area">
+        <form class="signup-form" id="signup-form">
+          <button class="action-button primary-button" type="submit">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="3.5" y="5.5" width="17" height="13" rx="2.5" stroke="currentColor" stroke-width="1.8" />
+              <path d="m5 7 7 5.5L19 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span>Sign up with email</span>
+          </button>
+          <button class="action-button secondary-button" type="button">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M16.37 12.54c.02 2.22 1.95 2.96 1.97 2.97-.02.05-.31 1.08-1.02 2.14-.61.92-1.25 1.84-2.26 1.86-.99.02-1.31-.6-2.44-.6s-1.48.58-2.41.62c-.97.04-1.71-.99-2.32-1.91-1.26-1.86-2.22-5.26-.92-7.56.65-1.14 1.82-1.86 3.09-1.88.96-.02 1.86.65 2.44.65.58 0 1.67-.8 2.81-.68.48.02 1.83.19 2.7 1.47-.07.04-1.61.94-1.64 2.92ZM14.52 6.94c.51-.61.85-1.45.76-2.29-.74.03-1.64.49-2.17 1.1-.48.54-.9 1.39-.78 2.21.83.06 1.68-.42 2.19-1.02Z" />
+            </svg>
+            <span>Sign up with Apple</span>
+          </button>
+        </form>
+        <p class="legal-copy">
+          By continuing, you agree to our <a href="#terms">Terms of Service</a> and <a href="#privacy">Privacy Policy</a>.
+        </p>
+        <a class="screen-link" href="#conversation">View the conversation screen <span aria-hidden="true">&nbsp;↓</span></a>
+      </div>
+    </section>
+
+    <section class="screen chat-screen" id="conversation" aria-labelledby="question-heading">
+      <header class="chat-topbar">
+        <a class="icon-button" href="#welcome" aria-label="Back to welcome screen">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </a>
+        <div class="topbar-actions">
+          <button class="icon-button" type="button" aria-label="Favorite this question">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M20.8 8.8c0 4.5-8.8 10-8.8 10s-8.8-5.5-8.8-10A4.8 4.8 0 0 1 12 6.2a4.8 4.8 0 0 1 8.8 2.6Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button class="icon-button" type="button" aria-label="Settings">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" />
+              <path d="m19.4 15 .1.1a1.7 1.7 0 1 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 1 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 1 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 1 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 1 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2a1.7 1.7 0 1 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 1 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 1 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.9Z" transform="translate(0 1) scale(.92)" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="chat-illustration" role="img" aria-label="Para s serdechkom">
+    <img src="couple_chat.png" alt="Para s serdechkom" />
+</div>
+<h1 class="question-heading" id="question-heading">What do you remember about the first time you met?</h1>
+
+      <aside class="relationship-tip" aria-labelledby="tip-title">
+        <span class="tip-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M9 18h6m-5 3h4m-2-19a7 7 0 0 0-4.4 12.45c.78.63 1.4 1.43 1.4 2.55h6c0-1.12.62-1.92 1.4-2.55A7 7 0 0 0 12 2Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+        <div>
+          <h2 id="tip-title">How will this help your relationship?</h2>
+          <p>Sharing memories helps you feel closer and strengthens your emotional bond.</p>
+        </div>
+      </aside>
+
+      <div class="chat-history" id="chat-history" role="log" aria-label="Conversation">
+        <div class="message-row outgoing">
+          <p class="message-bubble">We met at that little bookshop. I remember you reaching for the same novel I was holding.</p>
+          <span class="avatar" aria-label="You">Y</span>
+        </div>
+        <div class="message-row incoming">
+          <span class="avatar" aria-label="Your partner">P</span>
+          <p class="message-bubble">I was trying to look casual, but I was so nervous. I knew I wanted to keep talking to you.</p>
+        </div>
+        <div class="favorite-row">
+          <button class="favorite-button" type="button">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3.5 14.6 9l6 .9-4.3 4.2 1 5.9-5.3-2.8-5.3 2.8 1-5.9-4.3-4.2 6-.9L12 3.5Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            Add a favorite
+          </button>
+        </div>
+      </div>
+
+      <form class="chat-composer" id="chat-form" aria-label="Send a message">
+        <input id="message-input" type="text" name="message" placeholder="Type a message..." autocomplete="off" aria-label="Type a message">
+        <button class="icon-button composer-icon" type="button" aria-label="Attach a file">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m8.5 12.5 6.8-6.8a3.2 3.2 0 0 1 4.5 4.5L10 20a5 5 0 0 1-7.1-7.1l9.2-9.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <button class="send-button" type="submit" aria-label="Send message">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m21 3-7.2 18-3.5-7.3L3 10.2 21 3Z" fill="currentColor" />
+            <path d="m10.3 13.7 4.2-4.2" stroke="#E85A3A" stroke-width="1.3" stroke-linecap="round" />
+          </svg>
+        </button>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    const skipButton = document.querySelector('#skip-button');
+    const signupForm = document.querySelector('#signup-form');
+    const chatForm = document.querySelector('#chat-form');
+    const messageInput = document.querySelector('#message-input');
+    const chatHistory = document.querySelector('#chat-history');
+
+    skipButton.addEventListener('click', () => {
+      console.log('Skip clicked');
+    });
+
+    signupForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+    });
+
+    chatForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const message = messageInput.value.trim();
+
+      if (!message) return;
+
+      const row = document.createElement('div');
+      row.className = 'message-row outgoing';
+
+      const bubble = document.createElement('p');
+      bubble.className = 'message-bubble';
+      bubble.textContent = message;
+
+      const avatar = document.createElement('span');
+      avatar.className = 'avatar';
+      avatar.setAttribute('aria-label', 'You');
+      avatar.textContent = 'Y';
+
+      row.append(bubble, avatar);
+      chatHistory.insertBefore(row, chatHistory.querySelector('.favorite-row'));
+      messageInput.value = '';
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+    });
+  </script>
+</body>
+</html>

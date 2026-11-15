@@ -266,6 +266,19 @@ async def female_avatar_image() -> FileResponse:
     )
 
 
+@app.get("/couple_chat.png")
+async def couple_chat_image() -> FileResponse:
+    """Иллюстрация «пара с сердечком» для экрана вопроса в Mini App.
+
+    Тот же явный маршрут, что и у аватара: frontend/ наружу не раздаём.
+    """
+    return FileResponse(
+        FRONTEND_DIR / "couple_chat.png",
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 def _get_bot():
     """Возвращает экземпляр Telegram-бота без двойного создания.
 
