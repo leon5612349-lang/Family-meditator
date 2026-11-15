@@ -1024,6 +1024,51 @@
 
         .input-bar { border-top: none; }
 
+        /* Окно чата не перекрывает градиент: точечный паттерн оставляем,
+           сплошную заливку фона — прозрачной */
+        .chat {
+            background-color: transparent;
+        }
+
+        /* Стартовый экран (чашки с суккулентом) — прозрачный: персиковый
+           градиент body виден сквозь него. Тёмный вариант тоже гасим. */
+        .welcome-screen,
+        [data-theme="dark"] .welcome-screen {
+            background: transparent;
+        }
+
+        /* Иллюстрация не должна сжиматься в коротком окне, а экран —
+           прокручиваться, если контент не влезает.
+           ВАЖНО: justify-content: flex-start вместо center — иначе flex
+           с overflow уезжает вверх и заголовок налезает на иллюстрацию. */
+        .welcome-illustration {
+            flex: 0 0 auto;
+            max-height: 42vh;
+            width: min(80vw, 300px);
+            height: auto;
+        }
+
+        .welcome-title,
+        .welcome-sub,
+        .welcome-hint {
+            flex: 0 0 auto;
+        }
+
+        .welcome-screen {
+            overflow-y: auto;
+            justify-content: flex-start;
+            padding-top: clamp(12px, 3vh, 26px);
+        }
+
+        /* Шапка: отступ сверху под кнопки Telegram (Close/«…»),
+           чтобы «Наш уголок» не заезжал на них */
+        .header {
+            padding: 46px 18px 14px;
+            padding-top: calc(46px + var(--tg-safe-area-inset-top, 0px));
+            padding-left: 62px;
+            padding-right: 62px;
+        }
+
         /* Кнопки-таблетки из v0 */
         .send-huge {
             display: flex;
@@ -1200,6 +1245,44 @@
         .step-title {
             font-size: clamp(23px, 6.4vw, 28px);
             line-height: 1.24;
+        }
+
+        /* Стартовый экран: заголовок крупно, подзаголовок — приглушённый */
+        .welcome-title {
+            font-size: clamp(24px, 6.6vw, 28px);
+            line-height: 1.24;
+            color: var(--text);
+            margin-top: 18px;
+        }
+
+        .welcome-sub {
+            font-family: var(--font-body);
+            font-size: 13px;
+            font-weight: 500;
+            line-height: 1.55;
+            color: var(--text-soft, #8A7D74);
+            margin-top: 8px;
+            max-width: 300px;
+        }
+
+        /* Подсказка знакомства на стартовом экране */
+        .welcome-hint {
+            background: var(--card);
+            border: none;
+            box-shadow: 0 4px 16px rgba(46, 42, 39, 0.08);
+        }
+
+        .welcome-hint-text { color: var(--text-soft, #8A7D74); }
+
+        .welcome-btn {
+            background: var(--coral);
+            color: #FFFFFF;
+            box-shadow: 0 4px 0 var(--coral-hover);
+        }
+
+        .welcome-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 var(--coral-hover);
         }
 
         /* Прочие поверхности под новую палитру */
