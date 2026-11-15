@@ -266,6 +266,16 @@ async def female_avatar_image() -> FileResponse:
     )
 
 
+@app.get("/couple_welcome.png")
+async def couple_welcome_image() -> FileResponse:
+    """Иллюстрация «пара смотрит на телефон» для стартового экрана Mini App."""
+    return FileResponse(
+        FRONTEND_DIR / "couple_welcome.png",
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @app.get("/couple_chat.png")
 async def couple_chat_image() -> FileResponse:
     """Иллюстрация «пара с сердечком» для экрана вопроса в Mini App.
