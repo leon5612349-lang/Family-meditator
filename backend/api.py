@@ -266,6 +266,16 @@ async def female_avatar_image() -> FileResponse:
     )
 
 
+@app.get("/couple_welcome_nobg.png")
+async def couple_welcome_nobg_image() -> FileResponse:
+    """Иллюстрация «пара смотрит на телефон» БЕЗ фона (стартовый экран)."""
+    return FileResponse(
+        FRONTEND_DIR / "couple_welcome_nobg.png",
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @app.get("/couple_welcome.png")
 async def couple_welcome_image() -> FileResponse:
     """Иллюстрация «пара смотрит на телефон» для стартового экрана Mini App."""

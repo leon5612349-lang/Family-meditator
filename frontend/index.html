@@ -1037,13 +1037,22 @@
             background: transparent;
         }
 
-        /* Иллюстрация «пара смотрит на телефон» на стартовом экране */
+        /* Иллюстрация «пара смотрит на телефон» (PNG без фона) на стартовом
+           экране: без рамки и без подложки, края растворяются в персиковом
+           фоне через mask, чтобы не выглядеть вклеенным прямоугольником */
         .welcome-image {
-            width: min(70vw, 260px);
+            width: min(56vw, 205px);
             height: auto;
-            border-radius: 24px;
-            margin: 20px auto;
+            border-radius: 0;
+            background: transparent;
+            margin: 8px auto 10px;
             display: block;
+            -webkit-mask-image: radial-gradient(
+                ellipse at center, black 68%, transparent 100%
+            );
+            mask-image: radial-gradient(
+                ellipse at center, black 68%, transparent 100%
+            );
         }
 
         /* Стартовый экран (чашки/пара) не должен накладываться на чат:
@@ -1114,14 +1123,28 @@
             flex: 0 0 auto;
         }
 
-        /* Стартовый экран живёт внутри .chat (absolute) — так он не
-           перекрывает нижние панели ввода; содержимое при нехватке
-           места прокручивается */
+        /* Стартовый экран живёт в ПОТОКЕ чата (не absolute) — иначе он
+           перекрывал подсказку «Здесь всё хорошо…». Порядок сверху вниз:
+           подсказка (order -2) → картинка+заголовок+подзаголовок (order -1)
+           → сообщения. Содержимое при нехватке места прокручивается. */
         .welcome-screen {
-            overflow-y: auto;
+            position: relative;
+            inset: auto;
+            z-index: auto;
+            order: -1;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             justify-content: flex-start;
-            padding-top: clamp(12px, 3vh, 26px);
+            gap: 4px;
+            padding: clamp(12px, 3vh, 26px) 20px 20px;
+            text-align: center;
+            overflow-y: auto;
         }
+
+        /* Пока стартовый экран на месте — содержимое не прижимаем к низу */
+        .chat:has(> .welcome-screen)::before { margin-top: 0; }
 
         /* Шапка: отступ сверху под кнопки Telegram (Close/«…»),
            чтобы «Наш уголок» не заезжал на них */
@@ -1455,7 +1478,7 @@
         <!-- ══ Ламповый экран приветствия ═══════════════════════════ -->
         <!-- Показывается, пока чат пуст; исчезает с первым сообщением. -->
         <div class="welcome-screen" id="welcome-screen">
-            <img src="couple_welcome.png" alt="Пара смотрит на телефон вместе"
+            <img src="couple_welcome_nobg.png" alt="Пара смотрит на телефон вместе"
                  class="welcome-image" />
 
             <div class="welcome-title">Место, где вас слышат</div>
